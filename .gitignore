@@ -1,0 +1,42 @@
+# Backend build artifacts
+backend/bin/
+backend/tmp/
+backend/*.exe
+backend/*.test
+backend/*.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.local
+.env.*.local
+backend/.env
+backend/.env.local
+
+# Production config (use config.example.yaml as template)
+backend/configs/config.yaml
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes (if using local docker-compose)
+deployment/docker/data/
+
+# Documentation build
+docs/_build/
+docs/.doctrees/
+
+# Temporary files
+tmp/
+*.tmp
