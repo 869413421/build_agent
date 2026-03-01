@@ -38,6 +38,8 @@
 2. 执行事件必须有 `trace_id/run_id/step_id`
 3. 错误对象必须有 `error_code/error_message/retryable`
 4. 工具执行必须有 `tool_call_id`（用于幂等去重）
+5. 运行态必须可追踪隔离键：`tenant_id`（可选）/`user_id`（可选）/`session_id`（必选）
+6. 关键运行时版本必须可见：`config_version`、`model_version`、`tool_version`、`policy_version`
 
 ## 变更规则
 

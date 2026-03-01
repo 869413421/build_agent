@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-- 阶段：Protocol 组件已实现并进入审核
+- 阶段：Engine（loop）组件已实现，等待审核
 - 日期：2026-03-01
 
 ## 已完成组件
@@ -20,7 +20,7 @@
 
 ## 进行中组件（唯一）
 
-- Engine（loop）（待开始）
+- Engine（loop）（已完成待审核）
 
 ## 已通过审核的小步
 
@@ -29,6 +29,7 @@
 3. Protocol 组件完成并升级教程质量（`framework/labor_agent/protocol.py`、`tests/test_protocol.py`、`docs/tutorials/09-智能体通信协议.md`）
 4. Protocol 代码结构工程化重构（迁移到 `framework/labor_agent/core/protocol/`）并新增系列第一章总览教程
 5. 系列第二章 Protocol 教程完成（读者向发布文风，未引入 Engine 实现）
+6. Engine（loop）组件实现完成（`framework/labor_agent/core/engine/loop.py`、`tests/test_engine.py`、第三章教程）
 
 ## 技术债与偏差
 
@@ -44,10 +45,12 @@
 10. 第二章已补全环境安装与缺包兜底步骤（含 pytest not found 处理）。
 11. 已新增 IDE 解析配置 `pyrightconfig.json`，并在第二章补充 import 飘红处理步骤。
 12. 已新增教程黄金标准与章节模板，用于锁定跨会话质量一致性。
+13. 已将“生产可用 + 可扩展性 + Engine 反思链路”升级为硬约束。
+14. 已按生产级标准加严 10 组件 DoD（并发隔离、版本治理、熔断限流、脱敏、回放一致性、发布门禁）。
 
 ## 下一步唯一任务
 
-- 后续所有章节先对齐教程黄金标准与模板，再进入对应组件实现。
+- 在 Engine 组件中补齐 reflect 机制与可扩展接口，并按生产级 DoD补齐并发隔离与恢复一致性测试。
 
 ## 阻塞项
 
