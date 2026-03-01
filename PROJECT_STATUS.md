@@ -41,6 +41,7 @@
 7. 已将“设计解释型注释 + 代码文档同步更新”写入规则，并同步到第二章教程。
 8. 已将协议层 `FinalAnswer` 重构为通用字段（status/summary/output/artifacts/references），移除法律场景绑定字段。
 9. 第二章已修复 Mermaid 11.12.0 兼容问题（对象图改为 flowchart），并将 Python 命令统一为 uv。
+10. 第二章已补全环境安装与缺包兜底步骤（含 pytest not found 处理）。
 
 ## 下一步唯一任务
 

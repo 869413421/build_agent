@@ -57,6 +57,32 @@ New-Item -ItemType Directory -Force tests | Out-Null
 
 ---
 
+## 第 0.5 步：准备可运行环境（最简版）
+
+直接按这 2 步执行：
+
+1. 安装 `uv`（如果你还没有）：
+
+macOS / Linux：
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Windows（PowerShell）：
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+2. 添加测试依赖：
+
+```bash
+uv add --dev pytest
+```
+
+---
+
 ## 第 1 步：创建协议导出入口
 
 创建 `framework/labor_agent/core/protocol/__init__.py`：
@@ -436,11 +462,8 @@ if str(FRAMEWORK_DIR) not in sys.path:
 ## 第 6 步：运行与验证
 
 ```bash
-uv sync --dev
 uv run pytest tests/test_protocol.py
 ```
-
-若报 `No module named pytest`：先安装开发依赖即可。
 
 ---
 
