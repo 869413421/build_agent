@@ -83,6 +83,28 @@ uv add --dev pytest
 
 ---
 
+## 第 0.6 步：修复 IDE 飘红（import 无法解析）
+
+如果你在 IDE 里看到下面这段 import 飘红：
+
+```python
+from labor_agent.core.protocol import ...
+```
+
+按下面两步处理：
+
+1. 使用项目虚拟环境：
+
+```bash
+uv sync --dev
+```
+
+2. 把 `framework/` 设为源码根目录（Source Root）  
+   - PyCharm：右键 `framework` -> `Mark Directory as` -> `Sources Root`  
+   - VS Code/Pylance：项目已提供 `pyrightconfig.json`，重启语言服务即可
+
+---
+
 ## 第 1 步：创建协议导出入口
 
 创建 `framework/labor_agent/core/protocol/__init__.py`：
