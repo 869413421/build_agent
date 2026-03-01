@@ -20,10 +20,11 @@
 
 每次新会话开始，必须优先阅读：
 
-1. `NORTH_STAR.md`
-2. `AI_TASK_GUARDRAILS.md`
-3. `PROJECT_STATUS.md`
-4. `ROADMAP_COMPONENTS.md`
+1. `docs/governance/NORTH_STAR.md`
+2. `docs/governance/AI_TASK_GUARDRAILS.md`
+3. `docs/governance/PROJECT_STATUS.md`
+4. `docs/governance/ROADMAP_COMPONENTS.md`
+5. `docs/tutorials/_TUTORIAL_GOLD_STANDARD.md`
 
 ## 回答结构模板
 
@@ -45,3 +46,5 @@
 5. 验证清单
 6. 常见问题
 7. 环境准备与缺包兜底步骤（必须可直接复制执行）
+8. 必须遵循 `docs/tutorials/_CHAPTER_TEMPLATE.md` 结构
+9. 必须满足 `docs/tutorials/_TUTORIAL_GOLD_STANDARD.md` 的质量红线要求

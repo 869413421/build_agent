@@ -4,10 +4,11 @@
 
 执行任何任务前，必须先阅读：
 
-1. `NORTH_STAR.md`
-2. `AI_TASK_GUARDRAILS.md`
+1. `docs/governance/NORTH_STAR.md`
+2. `docs/governance/AI_TASK_GUARDRAILS.md`
 3. `AGENTS.md`
-4. `PROJECT_STATUS.md`
+4. `docs/governance/PROJECT_STATUS.md`
+5. `docs/tutorials/_TUTORIAL_GOLD_STANDARD.md`
 
 ## 硬约束
 
@@ -22,13 +23,14 @@
 9. 注释风格必须强调“为什么这样设计”，不能只描述代码表面行为。
 10. 任何代码结构或注释风格变化，必须同步更新对应教程章节。
 11. 执行 Python 相关命令时优先使用 `uv`（如 `uv run ...`、`uv sync --dev`）。
+12. 新增或修改教程时，必须以 `docs/tutorials/_CHAPTER_TEMPLATE.md` 为骨架，并满足黄金标准。
 
 ## 质量门禁
 
 1. 功能变更必须同步更新测试。
 2. API/Schema 与实现必须保持一致。
 3. 设计变化必须记录到 `docs/architecture/`。
-4. 会话结束前必须更新 `PROJECT_STATUS.md` 与 `HANDOFF_CHECKLIST.md`。
+4. 会话结束前必须更新 `docs/governance/PROJECT_STATUS.md` 与 `docs/governance/HANDOFF_CHECKLIST.md`。
 
 ## 完成定义（DoD）
 

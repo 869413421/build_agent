@@ -44,4 +44,4 @@
 
 ## 会话交接要求
 
-每次会话结束前必须更新 `PROJECT_STATUS.md`，保证下个会话或其他 AI 可直接接手。
+每次会话结束前必须更新 `docs/governance/PROJECT_STATUS.md`，保证下个会话或其他 AI 可直接接手。

@@ -16,8 +16,8 @@
 
 ## 必读文件
 
-- `NORTH_STAR.md`
-- `AI_TASK_GUARDRAILS.md`
+- `docs/governance/NORTH_STAR.md`
+- `docs/governance/AI_TASK_GUARDRAILS.md`
 - `AGENTS.md`
 
 ## 教程路线图

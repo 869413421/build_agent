@@ -24,7 +24,7 @@
 
 ## 已通过审核的小步
 
-1. 规则文件中文化与小步约束落地（`NORTH_STAR.md`、`AI_TASK_GUARDRAILS.md`、`AGENTS.md`）
+1. 规则文件中文化与小步约束落地（`docs/governance/NORTH_STAR.md`、`docs/governance/AI_TASK_GUARDRAILS.md`、`AGENTS.md`）
 2. 教程目录骨架创建（`docs/tutorials/01..14`）
 3. Protocol 组件完成并升级教程质量（`framework/labor_agent/protocol.py`、`tests/test_protocol.py`、`docs/tutorials/09-智能体通信协议.md`）
 4. Protocol 代码结构工程化重构（迁移到 `framework/labor_agent/core/protocol/`）并新增系列第一章总览教程
@@ -43,10 +43,11 @@
 9. 第二章已修复 Mermaid 11.12.0 兼容问题（对象图改为 flowchart），并将 Python 命令统一为 uv。
 10. 第二章已补全环境安装与缺包兜底步骤（含 pytest not found 处理）。
 11. 已新增 IDE 解析配置 `pyrightconfig.json`，并在第二章补充 import 飘红处理步骤。
+12. 已新增教程黄金标准与章节模板，用于锁定跨会话质量一致性。
 
 ## 下一步唯一任务
 
-- 继续按照用户节奏优化教程质量；待确认后再进入 Engine（loop）组件实现。
+- 后续所有章节先对齐教程黄金标准与模板，再进入对应组件实现。
 
 ## 阻塞项
 
