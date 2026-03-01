@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "labor-dispute-agent"
+version = "0.1.0"
+description = "Engineering-grade labor dispute guidance agent reference implementation"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn>=0.30.0",
+  "pydantic>=2.9.0",
+  "typer>=0.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+  "httpx>=0.27.0",
+]
+
+[project.scripts]
+labor-agent = "labor_agent.cli:app"
+
+[tool.setuptools]
+package-dir = {"" = "framework"}
+
+[tool.setuptools.packages.find]
+where = ["framework"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
