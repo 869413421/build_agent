@@ -26,4 +26,26 @@
 
 ## 快速开始
 
-运行与安装步骤会在后续小步中补齐。
+1. 安装依赖：
+
+```bash
+pip install -e .[dev]
+```
+
+2. 启动 API：
+
+```bash
+labor-agent serve
+```
+
+3. 测试健康检查：
+
+```bash
+curl http://127.0.0.1:8000/v1/health
+```
+
+4. 终端快速体验案情采集：
+
+```bash
+labor-agent intake "公司拖欠我两个月工资并拒绝补发"
+```
