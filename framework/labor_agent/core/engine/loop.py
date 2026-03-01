@@ -1,17 +1,20 @@
-"""Engine(loop) 组件。
+"""Engine(loop) 组件（生产导向版）。
 
-本模块只做一件事：消费 Protocol 状态并驱动执行循环。
-当前版本先实现最小闭环：
-1. plan -> 生成步骤列表
-2. act -> 执行步骤动作
-3. observe -> 记录事件
-4. update -> 更新状态
-5. finish -> 生成结构化最终输出
+本实现聚焦以下生产关键点：
+1. 固定链路：plan -> act -> observe -> reflect -> update -> finish
+2. 恢复一致性：基于 stable step key 跳过已完成步骤
+3. 预算控制：max_steps / time_budget / step_timeout / retry
+4. 扩展性：act_executor 可注入
+5. 性能语义：共享执行池、并发背压、attempt 指标、trace 输出摘要化
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
+from threading import BoundedSemaphore
 from time import monotonic
 from typing import Any, Callable, Literal
 
@@ -21,15 +24,15 @@ from labor_agent.core.protocol import AgentState, ErrorInfo, ExecutionEvent, Fin
 
 
 class EngineLimits(BaseModel):
-    """执行限制。
+    """执行限制。"""
 
-    为什么必须有这两个限制：
-    - max_steps：防止循环失控。
-    - time_budget_ms：防止单次运行无限占用资源。
-    """
-
-    max_steps: int = Field(default=8, ge=1, description="最大执行步数")
-    time_budget_ms: int = Field(default=3000, ge=1, description="时间预算（毫秒）")
+    max_steps: int = Field(default=8, ge=1, description="最大执行步数（只统计实际执行步）")
+    time_budget_ms: int = Field(default=3000, ge=1, description="run 级时间预算（毫秒）")
+    step_timeout_ms: int = Field(default=1200, ge=1, description="单步超时（毫秒）")
+    max_retry_per_step: int = Field(default=1, ge=0, description="单步最大重试次数")
+    executor_max_workers: int = Field(default=8, ge=1, description="共享执行池线程数")
+    max_inflight_acts: int = Field(default=32, ge=1, description="同时在途 act 上限（背压）")
+    trace_output_preview_chars: int = Field(default=240, ge=32, description="trace 输出预览最大字符数")
 
 
 class StepOutcome(BaseModel):
@@ -40,55 +43,132 @@ class StepOutcome(BaseModel):
     error: ErrorInfo | None = Field(default=None, description="错误信息")
 
 
-PlanFn = Callable[[AgentState], list[str]]
-ActFn = Callable[[AgentState, str, int], StepOutcome]
+class ReflectDecision(BaseModel):
+    """反思决策结果。"""
+
+    action: Literal["continue", "retry", "abort"] = Field(..., description="反思动作")
+    reason: str = Field(default="", description="决策原因")
+
+
+class RunContext(BaseModel):
+    """运行隔离与版本上下文。"""
+
+    tenant_id: str | None = Field(default=None, description="租户 ID（可选）")
+    user_id: str | None = Field(default=None, description="用户 ID（可选）")
+    config_version: str = Field(default="v1", description="配置版本")
+    model_version: str = Field(default="unset", description="模型版本")
+    tool_version: str = Field(default="unset", description="工具版本")
+    policy_version: str = Field(default="v1", description="策略版本")
+
+
+class PlanStep(BaseModel):
+    """标准化步骤对象。"""
+
+    key: str = Field(..., min_length=1, description="稳定步骤键")
+    name: str = Field(..., min_length=1, description="步骤名称")
+    payload: dict[str, Any] = Field(default_factory=dict, description="步骤扩展数据")
+
+
+PlanFn = Callable[[AgentState], list[str | dict[str, Any] | PlanStep]]
+ActFn = Callable[[AgentState, PlanStep, int], StepOutcome]
+ReflectFn = Callable[[AgentState, PlanStep, int, StepOutcome], ReflectDecision]
+ActExecutor = Callable[[ActFn, AgentState, PlanStep, int, int], StepOutcome]
 
 
 @dataclass
 class _RunStats:
-    """内部运行统计。
+    """内部运行统计。"""
 
-    该结构不写入协议，只用于组装最终输出。
-    """
-
-    total_steps: int = 0
+    total_planned_steps: int = 0
+    executed_steps: int = 0
     success_steps: int = 0
     failed_steps: int = 0
+    reflected_retry_count: int = 0
+    skipped_steps: int = 0
+    attempt_count: int = 0
     stop_reason: str = "finished"
 
 
 class EngineLoop:
-    """最小可用执行循环。"""
+    """生产导向 Engine 循环实现。"""
 
-    def __init__(self, limits: EngineLimits | None = None, now_ms: Callable[[], int] | None = None) -> None:
+    def __init__(
+        self,
+        limits: EngineLimits | None = None,
+        now_ms: Callable[[], int] | None = None,
+        act_executor: ActExecutor | None = None,
+    ) -> None:
         self.limits = limits or EngineLimits()
-        # 可注入时间函数，便于测试中做“确定性超时”验证。
         self._now_ms = now_ms or (lambda: int(monotonic() * 1000))
+        # 共享线程池：避免每步创建/销毁线程池导致 P95 抖动。
+        self._executor = ThreadPoolExecutor(max_workers=self.limits.executor_max_workers)
+        # 背压门：限制在途 act 数量，避免过载时无限提交任务。
+        self._inflight_guard = BoundedSemaphore(self.limits.max_inflight_acts)
+        self._act_executor = act_executor or self._default_act_executor
 
-    def run(self, state: AgentState, plan_fn: PlanFn, act_fn: ActFn) -> AgentState:
+    def close(self) -> None:
+        """释放共享执行池资源。"""
+
+        self._executor.shutdown(wait=False, cancel_futures=True)
+
+    def __del__(self) -> None:
+        """兜底释放资源。"""
+
+        try:
+            self.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def run(
+        self,
+        state: AgentState,
+        plan_fn: PlanFn,
+        act_fn: ActFn,
+        reflect_fn: ReflectFn | None = None,
+        context: RunContext | None = None,
+    ) -> AgentState:
         """执行一轮完整 loop，并返回更新后的 state。"""
 
+        context = context or RunContext()
+        reflect_fn = reflect_fn or self._default_reflect
         started_at = self._now_ms()
         stats = _RunStats()
-        plan_steps = plan_fn(state)
+        plan_steps = self._normalize_plan_steps(plan_fn(state))
+        stats.total_planned_steps = len(plan_steps)
+        completed_step_keys = self._completed_step_keys(state)
 
         self._append_event(
             state=state,
             event_type="plan",
             step_id="step_plan",
-            payload={"plan_steps": plan_steps, "plan_count": len(plan_steps)},
+            payload={
+                "plan_steps": [{"key": s.key, "name": s.name} for s in plan_steps],
+                "plan_count": len(plan_steps),
+                "context": context.model_dump(),
+            },
         )
 
         for idx, step in enumerate(plan_steps, start=1):
-            stats.total_steps += 1
+            step_id = f"step_{idx}"
 
-            if idx > self.limits.max_steps:
+            if step.key in completed_step_keys:
+                stats.skipped_steps += 1
+                self._append_event(
+                    state=state,
+                    event_type="state_update",
+                    step_id=step_id,
+                    payload={"phase": "resume_skip", "step_key": step.key, "step_name": step.name, "attempt": 0},
+                )
+                continue
+
+            stats.executed_steps += 1
+            if stats.executed_steps > self.limits.max_steps:
                 stats.stop_reason = "max_steps_reached"
                 self._append_event(
                     state=state,
                     event_type="error",
-                    step_id=f"step_{idx}",
-                    payload={"step": step},
+                    step_id=step_id,
+                    payload={"step_key": step.key, "step_name": step.name, "attempt": 0},
                     error=ErrorInfo(
                         error_code="MAX_STEPS_REACHED",
                         error_message="Engine 达到最大执行步数限制",
@@ -97,64 +177,126 @@ class EngineLoop:
                 )
                 break
 
-            elapsed_ms = self._now_ms() - started_at
-            if elapsed_ms > self.limits.time_budget_ms:
-                stats.stop_reason = "time_budget_exceeded"
-                self._append_event(
-                    state=state,
-                    event_type="error",
-                    step_id=f"step_{idx}",
-                    payload={"step": step, "elapsed_ms": elapsed_ms},
-                    error=ErrorInfo(
-                        error_code="TIME_BUDGET_EXCEEDED",
-                        error_message="Engine 超出时间预算",
-                        retryable=False,
-                    ),
-                )
-                break
+            attempt = 0
+            while True:
+                if self._exceed_time_budget(started_at):
+                    stats.stop_reason = "time_budget_exceeded"
+                    self._append_event(
+                        state=state,
+                        event_type="error",
+                        step_id=step_id,
+                        payload={"step_key": step.key, "step_name": step.name, "attempt": attempt},
+                        error=ErrorInfo(
+                            error_code="TIME_BUDGET_EXCEEDED",
+                            error_message="Engine 超出时间预算",
+                            retryable=False,
+                        ),
+                    )
+                    break
 
-            self._append_event(
-                state=state,
-                event_type="state_update",
-                step_id=f"step_{idx}",
-                payload={"phase": "act_start", "step": step},
-            )
-            outcome = act_fn(state, step, idx)
-
-            if outcome.status == "ok":
-                stats.success_steps += 1
+                stats.attempt_count += 1
                 self._append_event(
                     state=state,
                     event_type="state_update",
-                    step_id=f"step_{idx}",
-                    payload={"phase": "act_success", "step": step, "output": outcome.output},
+                    step_id=step_id,
+                    payload={"phase": "act_start", "step_key": step.key, "step_name": step.name, "attempt": attempt},
                 )
-                continue
 
-            stats.failed_steps += 1
-            self._append_event(
-                state=state,
-                event_type="error",
-                step_id=f"step_{idx}",
-                payload={"step": step, "output": outcome.output},
-                error=outcome.error
-                or ErrorInfo(error_code="STEP_FAILED", error_message="步骤执行失败", retryable=False),
-            )
-            stats.stop_reason = "step_failed"
-            break
+                outcome = self._act_executor(act_fn, state, step, idx, self.limits.step_timeout_ms)
+                summary, out_hash = self._summarize_output(outcome.output)
+
+                self._append_event(
+                    state=state,
+                    event_type="state_update",
+                    step_id=step_id,
+                    payload={
+                        "phase": "observe",
+                        "step_key": step.key,
+                        "step_name": step.name,
+                        "attempt": attempt,
+                        "status": outcome.status,
+                        "output_summary": summary,
+                        "output_hash": out_hash,
+                    },
+                )
+
+                decision = reflect_fn(state, step, idx, outcome)
+                self._append_event(
+                    state=state,
+                    event_type="state_update",
+                    step_id=step_id,
+                    payload={
+                        "phase": "reflect",
+                        "step_key": step.key,
+                        "step_name": step.name,
+                        "attempt": attempt,
+                        "decision": decision.action,
+                        "reason": decision.reason,
+                    },
+                )
+
+                if outcome.status == "ok" and decision.action == "continue":
+                    stats.success_steps += 1
+                    self._append_event(
+                        state=state,
+                        event_type="state_update",
+                        step_id=step_id,
+                        payload={
+                            "phase": "update",
+                            "step_key": step.key,
+                            "step_name": step.name,
+                            "attempt": attempt,
+                            "output_summary": summary,
+                            "output_hash": out_hash,
+                        },
+                    )
+                    completed_step_keys.add(step.key)
+                    break
+
+                if decision.action == "retry" and attempt < self.limits.max_retry_per_step:
+                    attempt += 1
+                    stats.reflected_retry_count += 1
+                    continue
+
+                stats.failed_steps += 1
+                stats.stop_reason = "step_failed"
+                self._append_event(
+                    state=state,
+                    event_type="error",
+                    step_id=step_id,
+                    payload={
+                        "step_key": step.key,
+                        "step_name": step.name,
+                        "attempt": attempt,
+                        "output_summary": summary,
+                        "output_hash": out_hash,
+                    },
+                    error=outcome.error
+                    or ErrorInfo(error_code="STEP_FAILED", error_message="步骤执行失败", retryable=False),
+                )
+                break
+
+            if stats.stop_reason in {"time_budget_exceeded", "step_failed"}:
+                break
 
         self._append_event(
             state=state,
             event_type="finish",
             step_id="step_finish",
             payload={
-                "total_steps": stats.total_steps,
+                "context": context.model_dump(),
+                "total_planned_steps": stats.total_planned_steps,
+                "executed_steps": stats.executed_steps,
                 "success_steps": stats.success_steps,
                 "failed_steps": stats.failed_steps,
+                "reflected_retry_count": stats.reflected_retry_count,
+                "skipped_steps": stats.skipped_steps,
+                "attempt_count": stats.attempt_count,
+                "completed_step_keys": sorted(list(completed_step_keys)),
                 "stop_reason": stats.stop_reason,
             },
         )
-        state.final_answer = self._build_final_answer(stats)
+        state.final_answer = self._build_final_answer(stats, started_at)
         return state
 
     def _append_event(
@@ -165,10 +307,7 @@ class EngineLoop:
         payload: dict[str, Any],
         error: ErrorInfo | None = None,
     ) -> None:
-        """统一写事件。
-
-        集中写入可避免多处手写字段导致 trace 结构不一致。
-        """
+        """统一写事件，确保 trace 结构一致。"""
 
         state.events.append(
             ExecutionEvent(
@@ -181,7 +320,7 @@ class EngineLoop:
             )
         )
 
-    def _build_final_answer(self, stats: _RunStats) -> FinalAnswer:
+    def _build_final_answer(self, stats: _RunStats, started_at: int) -> FinalAnswer:
         """构造通用最终输出。"""
 
         status: Literal["success", "partial", "failed"] = "success"
@@ -190,16 +329,150 @@ class EngineLoop:
         elif stats.stop_reason != "finished":
             status = "partial"
 
+        elapsed_ms = max(1, self._now_ms() - started_at)
+        steps_per_second = round((stats.executed_steps / elapsed_ms) * 1000, 3)
+
         return FinalAnswer(
             status=status,
             summary=f"Engine 执行结束：{stats.stop_reason}",
             output={
-                "total_steps": stats.total_steps,
+                "total_planned_steps": stats.total_planned_steps,
+                "executed_steps": stats.executed_steps,
                 "success_steps": stats.success_steps,
                 "failed_steps": stats.failed_steps,
+                "reflected_retry_count": stats.reflected_retry_count,
+                "skipped_steps": stats.skipped_steps,
+                "attempt_count": stats.attempt_count,
                 "stop_reason": stats.stop_reason,
+                "elapsed_ms": elapsed_ms,
+                "steps_per_second": steps_per_second,
             },
             artifacts=[{"type": "engine_stats", "name": "loop_result"}],
             references=[],
         )
+
+    def _completed_step_keys(self, state: AgentState) -> set[str]:
+        """提取历史已完成步骤键（优先读 finish 索引）。"""
+
+        for event in reversed(state.events):
+            if event.event_type != "finish":
+                continue
+            keys = event.payload.get("completed_step_keys")
+            if isinstance(keys, list):
+                parsed = {k for k in keys if isinstance(k, str) and k}
+                if parsed:
+                    return parsed
+
+        completed: set[str] = set()
+        for event in state.events:
+            if event.event_type != "state_update":
+                continue
+            if event.payload.get("phase") != "update":
+                continue
+            step_key = event.payload.get("step_key")
+            if isinstance(step_key, str) and step_key:
+                completed.add(step_key)
+        return completed
+
+    def _exceed_time_budget(self, started_at: int) -> bool:
+        """检查 run 级时间预算。"""
+
+        return (self._now_ms() - started_at) > self.limits.time_budget_ms
+
+    @staticmethod
+    def _default_reflect(_: AgentState, __: PlanStep, ___: int, outcome: StepOutcome) -> ReflectDecision:
+        """默认反思策略：成功继续，失败按 retryable 决策。"""
+
+        if outcome.status == "ok":
+            return ReflectDecision(action="continue", reason="步骤执行成功")
+        if outcome.error and outcome.error.retryable:
+            return ReflectDecision(action="retry", reason="错误可重试")
+        return ReflectDecision(action="abort", reason="错误不可重试")
+
+    def _default_act_executor(
+        self, act_fn: ActFn, state: AgentState, step: PlanStep, idx: int, timeout_ms: int
+    ) -> StepOutcome:
+        """默认 act 执行器（共享线程池 + 背压）。
+
+        性能语义：
+        - 使用共享池，避免每步创建线程池。
+        - 使用信号量做背压，过载时直接返回可重试错误。
+        """
+
+        acquired = self._inflight_guard.acquire(timeout=max(0.001, timeout_ms / 1000.0))
+        if not acquired:
+            return StepOutcome(
+                status="error",
+                output={},
+                error=ErrorInfo(
+                    error_code="ACT_BACKPRESSURE",
+                    error_message="act 执行器达到并发上限",
+                    retryable=True,
+                ),
+            )
+
+        try:
+            future = self._executor.submit(act_fn, state, step, idx)
+            try:
+                return future.result(timeout=max(0.001, timeout_ms / 1000.0))
+            except FutureTimeoutError:
+                future.cancel()
+                return StepOutcome(
+                    status="error",
+                    output={},
+                    error=ErrorInfo(
+                        error_code="STEP_TIMEOUT",
+                        error_message="步骤执行超时",
+                        retryable=True,
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001
+                return StepOutcome(
+                    status="error",
+                    output={},
+                    error=ErrorInfo(
+                        error_code="ACT_EXECUTOR_EXCEPTION",
+                        error_message=f"执行器异常: {exc}",
+                        retryable=False,
+                    ),
+                )
+        finally:
+            self._inflight_guard.release()
+
+    def _summarize_output(self, output: dict[str, Any]) -> tuple[str, str]:
+        """对步骤输出做摘要，控制 trace 体积。"""
+
+        raw = json.dumps(output, ensure_ascii=False, sort_keys=True)
+        out_hash = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+        preview = raw[: self.limits.trace_output_preview_chars]
+        summary = f"len={len(raw)},preview={preview}"
+        return summary, out_hash
+
+    @staticmethod
+    def _normalize_plan_steps(raw_steps: list[str | dict[str, Any] | PlanStep]) -> list[PlanStep]:
+        """标准化 plan 步骤。"""
+
+        normalized: list[PlanStep] = []
+        for item in raw_steps:
+            if isinstance(item, PlanStep):
+                normalized.append(item)
+                continue
+            if isinstance(item, str):
+                key = EngineLoop._stable_hash({"name": item})
+                normalized.append(PlanStep(key=key, name=item, payload={}))
+                continue
+            step_id = item.get("id") if isinstance(item.get("id"), str) else ""
+            step_name = item.get("name") if isinstance(item.get("name"), str) else "unnamed_step"
+            payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+            if not step_id:
+                step_id = EngineLoop._stable_hash({"name": step_name, "payload": payload})
+            normalized.append(PlanStep(key=step_id, name=step_name, payload=payload))
+        return normalized
+
+    @staticmethod
+    def _stable_hash(value: dict[str, Any]) -> str:
+        """生成稳定哈希，用于步骤键。"""
+
+        raw = json.dumps(value, sort_keys=True, ensure_ascii=False)
+        return f"step_{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:12]}"
 

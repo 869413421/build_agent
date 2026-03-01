@@ -48,3 +48,5 @@
 7. 环境准备与缺包兜底步骤（必须可直接复制执行）
 8. 必须遵循 `docs/tutorials/_CHAPTER_TEMPLATE.md` 结构
 9. 必须满足 `docs/tutorials/_TUTORIAL_GOLD_STANDARD.md` 的质量红线要求
+10. 代码片段必须完整可运行（用户可按教程独立搭建）
+11. 代码路径必须可点击跳转，并与仓库文件路径一致

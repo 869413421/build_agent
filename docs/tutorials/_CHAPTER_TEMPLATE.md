@@ -37,10 +37,10 @@ uv sync --dev
 
 ### 第 2 步：写核心代码
 
-文件：`<relative/path.py>`
+文件：[<relative/path.py>](<relative/path.py>)
 
 ```python
-# code
+# 完整可运行代码（不要省略关键逻辑）
 ```
 
 为什么这样写：
@@ -50,10 +50,10 @@ uv sync --dev
 
 ### 第 3 步：写测试
 
-文件：`tests/<test_file>.py`
+文件：[tests/<test_file>.py](tests/<test_file>.py)
 
 ```python
-# test code
+# 完整可运行测试代码
 ```
 
 ## 关键设计解释
@@ -85,4 +85,3 @@ uv run pytest tests/<test_file>.py
 
 - 下一章做什么：
 - 与本章的承接关系：
-

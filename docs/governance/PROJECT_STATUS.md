@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-- 阶段：Engine（loop）组件已实现，等待审核
+- 阶段：Engine（loop）已升级为生产导向版本，等待审核
 - 日期：2026-03-01
 
 ## 已完成组件
@@ -30,6 +30,11 @@
 4. Protocol 代码结构工程化重构（迁移到 `framework/labor_agent/core/protocol/`）并新增系列第一章总览教程
 5. 系列第二章 Protocol 教程完成（读者向发布文风，未引入 Engine 实现）
 6. Engine（loop）组件实现完成（`framework/labor_agent/core/engine/loop.py`、`tests/test_engine.py`、第三章教程）
+7. Engine 升级：加入 reflect 机制、恢复一致性、隔离上下文与性能指标输出
+8. Engine 关键修复：stable step key、executed_steps 计数、retry 内 run budget 检查、act_executor 超时执行语义
+9. Engine 性能语义增强：共享线程池复用、并发背压、attempt_count 指标、trace 输出摘要化
+10. 第三章教程已补充关键代码块（不再仅文字描述）
+11. 已将“教程代码必须完整可运行 + 路径可点击跳转”升级为硬约束并写入模板。
 
 ## 技术债与偏差
 
@@ -47,10 +52,11 @@
 12. 已新增教程黄金标准与章节模板，用于锁定跨会话质量一致性。
 13. 已将“生产可用 + 可扩展性 + Engine 反思链路”升级为硬约束。
 14. 已按生产级标准加严 10 组件 DoD（并发隔离、版本治理、熔断限流、脱敏、回放一致性、发布门禁）。
+15. Engine 当前默认执行器使用线程超时返回，底层调用不可中断时可能后台继续，后续可升级为协程/进程隔离执行器。
 
 ## 下一步唯一任务
 
-- 在 Engine 组件中补齐 reflect 机制与可扩展接口，并按生产级 DoD补齐并发隔离与恢复一致性测试。
+- 若本步审核通过，进入 Model Runtime（LLM Adapter）组件实现与第四章教程（含降级与版本追踪）。
 
 ## 阻塞项
 
