@@ -7,6 +7,11 @@ import typer
 app = typer.Typer(help="agent_forge CLI")
 
 
+@app.callback()
+def main() -> None:
+    """CLI root command group."""
+
+
 @app.command()
 def health() -> None:
     """Simple CLI health check."""
