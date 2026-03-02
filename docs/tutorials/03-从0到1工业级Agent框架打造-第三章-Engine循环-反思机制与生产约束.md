@@ -16,18 +16,60 @@
 ## 前置条件
 
 1. 已完成第二章 Protocol 组件。
-2. 已安装 `uv`。
+2. 你可以正常运行：`uv run pytest tests/unit/test_protocol.py -q`。
+3. 当前命令执行目录：仓库根目录（包含 `src/`、`tests/`、`docs/`）。
 
-```bash
-# Windows (PowerShell)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+## 章节快照目录
 
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
+1. 本章独立快照：`examples/from_zero_to_one/chapter_03/`
+2. 主线目标目录：`src/agent_forge/`
 
-uv add --dev pytest
-uv sync --dev
-```
+## 本章怎么学（先不“啃源码”）
+
+如果你在这一章有“突然变难”的感觉，这是正常的。
+这一章难点不在语法，而在于一次引入了执行状态、重试策略、超时预算和并发背压四套机制。
+
+建议按下面顺序学习：
+
+1. 先看主流程图，只记 6 个动作：`plan -> act -> observe -> reflect -> update -> finish`。
+2. 先跑测试看结果，再回头看实现，避免一上来被长代码压住。
+3. 看源码时只盯 3 个函数：`arun()`、`_default_act_executor()`、`_build_final_answer()`。
+4. 最后再看失败路径测试（超时、重试、背压），理解系统如何“可控失败”。
+
+---
+
+## 先把术语讲成人话（这一节最重要）
+
+先别急着看代码，先把 6 个词翻译成日常语言：
+
+1. `plan`：先列待办清单。
+例子：先查法规，再整理证据，再生成建议。
+2. `act`：按清单做一件动作。
+例子：调用一次搜索工具，真的去查。
+3. `observe`：看动作结果并记录。
+例子：查到 3 条结果，耗时 120ms。
+4. `reflect`：判断下一步怎么走。
+例子：结果不够就重试，结果够好就继续，风险高就终止。
+5. `update`：把“这一步完成”正式写入状态。
+例子：恢复执行时能跳过这一步，不会重复做。
+6. `finish`：收尾并给最终结果。
+例子：输出 `FinalAnswer` 和执行统计。
+
+一句话记忆：
+先想（plan）-> 去做（act）-> 看结果（observe）-> 做判断（reflect）-> 提交状态（update）-> 收尾（finish）。
+
+### 用一个生活化例子串起来
+
+你让 Agent 处理“公司拖欠工资”咨询：
+
+1. `plan`：先查法规，再整理证据清单，最后给行动建议。
+2. `act`：执行“查法规”这一步。
+3. `observe`：发现结果太少。
+4. `reflect`：判断“可重试”，再查一次。
+5. 第二次结果够用，进入 `update`，把该步骤标记完成。
+6. 全部步骤完成后 `finish`，输出结构化建议。
+
+把 Engine 当成“会自检的任务执行器”就好：不是一口气跑完，而是每一步都先看结果再决定下一步。
 
 ---
 
@@ -986,14 +1028,50 @@ def test_engine_backpressure_error_when_inflight_exceeded() -> None:
 
 ---
 
-## 运行命令
+### 第 5 步：主线同步（chapter_03 -> src/tests）
+
+本章快照与主线需要同步 4 个关键文件：
+
+1. `engine` 导出入口：`src/agent_forge/components/engine/__init__.py`
+2. `engine` 主循环：`src/agent_forge/components/engine/application/loop.py`
+3. `engine` 测试：`tests/unit/test_engine.py`
+4. `protocol` 测试（Engine 依赖）：`tests/unit/test_protocol.py`
+
+快速同步命令（Bash）：
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py
+cp examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/__init__.py src/agent_forge/components/engine/__init__.py
+cp examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/application/loop.py src/agent_forge/components/engine/application/loop.py
+cp examples/from_zero_to_one/chapter_03/tests/unit/test_engine.py tests/unit/test_engine.py
+cp examples/from_zero_to_one/chapter_03/tests/unit/test_protocol.py tests/unit/test_protocol.py
+```
+
+Windows PowerShell：
+
+```powershell
+Copy-Item examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/__init__.py src/agent_forge/components/engine/__init__.py -Force
+Copy-Item examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/application/loop.py src/agent_forge/components/engine/application/loop.py -Force
+Copy-Item examples/from_zero_to_one/chapter_03/tests/unit/test_engine.py tests/unit/test_engine.py -Force
+Copy-Item examples/from_zero_to_one/chapter_03/tests/unit/test_protocol.py tests/unit/test_protocol.py -Force
 ```
 
 ---
 
+## 运行命令
+
+先跑最小验证（建议第一遍只跑这个）：
+
+```bash
+uv run pytest tests/unit/test_engine.py -q
+```
+
+再跑完整回归：
+
+```bash
+uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q
+```
+
+---
 ## 验证清单
 
 1. Protocol 与 Engine 测试全部通过。
@@ -1015,23 +1093,6 @@ UV_CACHE_DIR=.uv-cache uv run pytest tests/unit/test_protocol.py tests/unit/test
 先执行 `uv add --dev pytest` 和 `uv sync --dev`。
 
 ---
-
-## 环境准备与缺包兜底步骤（可直接复制）
-
-```bash
-# 1) 安装 uv（未安装时）
-# Windows
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# 2) 安装并同步依赖
-uv add --dev pytest
-uv sync --dev
-
-# 3) 运行测试
-UV_CACHE_DIR=.uv-cache uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py
-```
 
 
 
