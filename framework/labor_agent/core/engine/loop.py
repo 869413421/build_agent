@@ -1,22 +1,23 @@
-"""Engine(loop) 组件（生产导向版）。
+"""Engine(loop) 组件（asyncio 生产导向版）。
 
-本实现聚焦以下生产关键点：
-1. 固定链路：plan -> act -> observe -> reflect -> update -> finish
-2. 恢复一致性：基于 stable step key 跳过已完成步骤
+核心目标：
+1. 主循环异步化：plan -> act -> observe -> reflect -> update -> finish
+2. 恢复一致性：stable step key 跳过已完成步骤
 3. 预算控制：max_steps / time_budget / step_timeout / retry
-4. 扩展性：act_executor 可注入
-5. 性能语义：共享执行池、并发背压、attempt 指标、trace 输出摘要化
+4. 可扩展执行：act_executor 可注入；默认执行器支持协程与同步函数
+5. 性能语义：共享线程池、并发背压、attempt 指标、trace 输出摘要化
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import inspect
 import json
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from threading import BoundedSemaphore
 from time import monotonic
-from typing import Any, Callable, Literal
+from typing import Any, Awaitable, Callable, Literal
 
 from pydantic import BaseModel, Field
 
@@ -70,9 +71,11 @@ class PlanStep(BaseModel):
 
 
 PlanFn = Callable[[AgentState], list[str | dict[str, Any] | PlanStep]]
-ActFn = Callable[[AgentState, PlanStep, int], StepOutcome]
-ReflectFn = Callable[[AgentState, PlanStep, int, StepOutcome], ReflectDecision]
-ActExecutor = Callable[[ActFn, AgentState, PlanStep, int, int], StepOutcome]
+ActFn = Callable[[AgentState, PlanStep, int], StepOutcome | Awaitable[StepOutcome]]
+ReflectFn = Callable[
+    [AgentState, PlanStep, int, StepOutcome], ReflectDecision | Awaitable[ReflectDecision]
+]
+ActExecutor = Callable[[ActFn, AgentState, PlanStep, int, int], Awaitable[StepOutcome]]
 
 
 @dataclass
@@ -90,7 +93,7 @@ class _RunStats:
 
 
 class EngineLoop:
-    """生产导向 Engine 循环实现。"""
+    """生产导向 Engine 循环实现（asyncio）。"""
 
     def __init__(
         self,
@@ -100,10 +103,8 @@ class EngineLoop:
     ) -> None:
         self.limits = limits or EngineLimits()
         self._now_ms = now_ms or (lambda: int(monotonic() * 1000))
-        # 共享线程池：避免每步创建/销毁线程池导致 P95 抖动。
         self._executor = ThreadPoolExecutor(max_workers=self.limits.executor_max_workers)
-        # 背压门：限制在途 act 数量，避免过载时无限提交任务。
-        self._inflight_guard = BoundedSemaphore(self.limits.max_inflight_acts)
+        self._inflight_guard = asyncio.Semaphore(self.limits.max_inflight_acts)
         self._act_executor = act_executor or self._default_act_executor
 
     def close(self) -> None:
@@ -111,15 +112,7 @@ class EngineLoop:
 
         self._executor.shutdown(wait=False, cancel_futures=True)
 
-    def __del__(self) -> None:
-        """兜底释放资源。"""
-
-        try:
-            self.close()
-        except Exception:  # noqa: BLE001
-            pass
-
-    def run(
+    async def arun(
         self,
         state: AgentState,
         plan_fn: PlanFn,
@@ -127,7 +120,7 @@ class EngineLoop:
         reflect_fn: ReflectFn | None = None,
         context: RunContext | None = None,
     ) -> AgentState:
-        """执行一轮完整 loop，并返回更新后的 state。"""
+        """异步执行一轮完整 loop，并返回更新后的 state。"""
 
         context = context or RunContext()
         reflect_fn = reflect_fn or self._default_reflect
@@ -202,9 +195,8 @@ class EngineLoop:
                     payload={"phase": "act_start", "step_key": step.key, "step_name": step.name, "attempt": attempt},
                 )
 
-                outcome = self._act_executor(act_fn, state, step, idx, self.limits.step_timeout_ms)
+                outcome = await self._act_executor(act_fn, state, step, idx, self.limits.step_timeout_ms)
                 summary, out_hash = self._summarize_output(outcome.output)
-
                 self._append_event(
                     state=state,
                     event_type="state_update",
@@ -220,7 +212,7 @@ class EngineLoop:
                     },
                 )
 
-                decision = reflect_fn(state, step, idx, outcome)
+                decision = await self._maybe_await(reflect_fn(state, step, idx, outcome))
                 self._append_event(
                     state=state,
                     event_type="state_update",
@@ -298,6 +290,94 @@ class EngineLoop:
         )
         state.final_answer = self._build_final_answer(stats, started_at)
         return state
+
+    def run(
+        self,
+        state: AgentState,
+        plan_fn: PlanFn,
+        act_fn: ActFn,
+        reflect_fn: ReflectFn | None = None,
+        context: RunContext | None = None,
+    ) -> AgentState:
+        """同步包装器。
+
+        注意：
+        - 如果调用方已有事件循环，请直接使用 `await arun(...)`。
+        """
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.arun(state, plan_fn, act_fn, reflect_fn, context))
+        raise RuntimeError("检测到正在运行的事件循环，请改用 await arun(...)")
+
+    async def _default_act_executor(
+        self, act_fn: ActFn, state: AgentState, step: PlanStep, idx: int, timeout_ms: int
+    ) -> StepOutcome:
+        """默认 act 执行器（共享线程池 + 背压 + asyncio 超时）。"""
+
+        timeout_sec = max(0.001, timeout_ms / 1000.0)
+        try:
+            await asyncio.wait_for(self._inflight_guard.acquire(), timeout=timeout_sec)
+        except asyncio.TimeoutError:
+            return StepOutcome(
+                status="error",
+                output={},
+                error=ErrorInfo(
+                    error_code="ACT_BACKPRESSURE",
+                    error_message="act 执行器达到并发上限",
+                    retryable=True,
+                ),
+            )
+        try:
+            try:
+                if inspect.iscoroutinefunction(act_fn):
+                    return await asyncio.wait_for(act_fn(state, step, idx), timeout=timeout_sec)
+                loop = asyncio.get_running_loop()
+                return await asyncio.wait_for(
+                    loop.run_in_executor(self._executor, lambda: act_fn(state, step, idx)),
+                    timeout=timeout_sec,
+                )
+            except asyncio.TimeoutError:
+                return StepOutcome(
+                    status="error",
+                    output={},
+                    error=ErrorInfo(
+                        error_code="STEP_TIMEOUT",
+                        error_message="步骤执行超时",
+                        retryable=True,
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001
+                return StepOutcome(
+                    status="error",
+                    output={},
+                    error=ErrorInfo(
+                        error_code="ACT_EXECUTOR_EXCEPTION",
+                        error_message=f"执行器异常: {exc}",
+                        retryable=False,
+                    ),
+                )
+        finally:
+            self._inflight_guard.release()
+
+    @staticmethod
+    async def _maybe_await(value: ReflectDecision | Awaitable[ReflectDecision]) -> ReflectDecision:
+        """兼容同步/异步反思函数。"""
+
+        if inspect.isawaitable(value):
+            return await value
+        return value
+
+    @staticmethod
+    def _default_reflect(_: AgentState, __: PlanStep, ___: int, outcome: StepOutcome) -> ReflectDecision:
+        """默认反思策略：成功继续，失败按 retryable 决策。"""
+
+        if outcome.status == "ok":
+            return ReflectDecision(action="continue", reason="步骤执行成功")
+        if outcome.error and outcome.error.retryable:
+            return ReflectDecision(action="retry", reason="错误可重试")
+        return ReflectDecision(action="abort", reason="错误不可重试")
 
     def _append_event(
         self,
@@ -379,66 +459,6 @@ class EngineLoop:
 
         return (self._now_ms() - started_at) > self.limits.time_budget_ms
 
-    @staticmethod
-    def _default_reflect(_: AgentState, __: PlanStep, ___: int, outcome: StepOutcome) -> ReflectDecision:
-        """默认反思策略：成功继续，失败按 retryable 决策。"""
-
-        if outcome.status == "ok":
-            return ReflectDecision(action="continue", reason="步骤执行成功")
-        if outcome.error and outcome.error.retryable:
-            return ReflectDecision(action="retry", reason="错误可重试")
-        return ReflectDecision(action="abort", reason="错误不可重试")
-
-    def _default_act_executor(
-        self, act_fn: ActFn, state: AgentState, step: PlanStep, idx: int, timeout_ms: int
-    ) -> StepOutcome:
-        """默认 act 执行器（共享线程池 + 背压）。
-
-        性能语义：
-        - 使用共享池，避免每步创建线程池。
-        - 使用信号量做背压，过载时直接返回可重试错误。
-        """
-
-        acquired = self._inflight_guard.acquire(timeout=max(0.001, timeout_ms / 1000.0))
-        if not acquired:
-            return StepOutcome(
-                status="error",
-                output={},
-                error=ErrorInfo(
-                    error_code="ACT_BACKPRESSURE",
-                    error_message="act 执行器达到并发上限",
-                    retryable=True,
-                ),
-            )
-
-        try:
-            future = self._executor.submit(act_fn, state, step, idx)
-            try:
-                return future.result(timeout=max(0.001, timeout_ms / 1000.0))
-            except FutureTimeoutError:
-                future.cancel()
-                return StepOutcome(
-                    status="error",
-                    output={},
-                    error=ErrorInfo(
-                        error_code="STEP_TIMEOUT",
-                        error_message="步骤执行超时",
-                        retryable=True,
-                    ),
-                )
-            except Exception as exc:  # noqa: BLE001
-                return StepOutcome(
-                    status="error",
-                    output={},
-                    error=ErrorInfo(
-                        error_code="ACT_EXECUTOR_EXCEPTION",
-                        error_message=f"执行器异常: {exc}",
-                        retryable=False,
-                    ),
-                )
-        finally:
-            self._inflight_guard.release()
-
     def _summarize_output(self, output: dict[str, Any]) -> tuple[str, str]:
         """对步骤输出做摘要，控制 trace 体积。"""
 
@@ -475,4 +495,3 @@ class EngineLoop:
 
         raw = json.dumps(value, sort_keys=True, ensure_ascii=False)
         return f"step_{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:12]}"
-

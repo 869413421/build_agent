@@ -1,7 +1,8 @@
-"""Engine(loop) 组件测试（生产导向）。"""
+"""Engine(loop) 组件测试（asyncio 生产导向）。"""
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 from labor_agent.core.engine import EngineLimits, EngineLoop, PlanStep, ReflectDecision, RunContext, StepOutcome
@@ -17,10 +18,10 @@ def test_engine_run_success_flow() -> None:
     def plan_fn(_: AgentState) -> list[str]:
         return ["step-a", "step-b"]
 
-    def act_fn(_: AgentState, step: PlanStep, idx: int) -> StepOutcome:
+    async def act_fn(_: AgentState, step: PlanStep, idx: int) -> StepOutcome:
         return StepOutcome(status="ok", output={"step": step.name, "index": idx})
 
-    updated = engine.run(state, plan_fn=plan_fn, act_fn=act_fn)
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn))
     assert updated.final_answer is not None
     assert updated.final_answer.status == "success"
     assert updated.final_answer.output["success_steps"] == 2
@@ -38,7 +39,7 @@ def test_engine_reflect_retry_once_then_success() -> None:
     def plan_fn(_: AgentState) -> list[dict]:
         return [{"id": "s-a", "name": "step-a"}]
 
-    def act_fn(_: AgentState, __: PlanStep, ___: int) -> StepOutcome:
+    async def act_fn(_: AgentState, __: PlanStep, ___: int) -> StepOutcome:
         call_count["count"] += 1
         if call_count["count"] == 1:
             return StepOutcome(
@@ -48,12 +49,12 @@ def test_engine_reflect_retry_once_then_success() -> None:
             )
         return StepOutcome(status="ok", output={"done": True})
 
-    def reflect_fn(_: AgentState, __: PlanStep, ___: int, outcome: StepOutcome) -> ReflectDecision:
+    async def reflect_fn(_: AgentState, __: PlanStep, ___: int, outcome: StepOutcome) -> ReflectDecision:
         if outcome.status == "error" and outcome.error and outcome.error.retryable:
             return ReflectDecision(action="retry", reason="临时错误重试")
         return ReflectDecision(action="continue", reason="成功推进")
 
-    updated = engine.run(state, plan_fn=plan_fn, act_fn=act_fn, reflect_fn=reflect_fn)
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn, reflect_fn=reflect_fn))
     assert updated.final_answer is not None
     assert updated.final_answer.status == "success"
     assert updated.final_answer.output["reflected_retry_count"] == 1
@@ -65,7 +66,6 @@ def test_engine_resume_uses_stable_step_key_not_idx() -> None:
 
     engine = EngineLoop(limits=EngineLimits(max_steps=10, time_budget_ms=5000))
     state = build_initial_state("session_engine_resume")
-    # 历史已完成 step-b（稳定 id）
     state.events.append(
         ExecutionEvent(
             trace_id=state.trace_id,
@@ -78,18 +78,17 @@ def test_engine_resume_uses_stable_step_key_not_idx() -> None:
     called_steps: list[str] = []
 
     def plan_fn(_: AgentState) -> list[dict]:
-        # 故意重排 + 插入新步骤，验证不会按 idx 误判
         return [
             {"id": "s-x", "name": "step-x"},
             {"id": "s-b", "name": "step-b"},
             {"id": "s-a", "name": "step-a"},
         ]
 
-    def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
         called_steps.append(step.name)
         return StepOutcome(status="ok", output={"step": step.name})
 
-    updated = engine.run(state, plan_fn=plan_fn, act_fn=act_fn)
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn))
     assert "step-b" not in called_steps
     assert "step-x" in called_steps
     assert "step-a" in called_steps
@@ -115,12 +114,11 @@ def test_engine_max_steps_counts_executed_not_skipped() -> None:
     def plan_fn(_: AgentState) -> list[dict]:
         return [{"id": "s-a", "name": "step-a"}, {"id": "s-b", "name": "step-b"}]
 
-    def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
         return StepOutcome(status="ok", output={"step": step.name})
 
-    updated = engine.run(state, plan_fn=plan_fn, act_fn=act_fn)
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn))
     assert updated.final_answer is not None
-    # 只执行了 step-b 一步，应在 max_steps=1 内完成
     assert updated.final_answer.status == "success"
     assert updated.final_answer.output["executed_steps"] == 1
     assert updated.final_answer.output["skipped_steps"] == 1
@@ -137,11 +135,11 @@ def test_engine_step_timeout_via_executor() -> None:
     def plan_fn(_: AgentState) -> list[dict]:
         return [{"id": "s-a", "name": "slow-step"}]
 
-    def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
-        time.sleep(0.05)
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+        await asyncio.sleep(0.05)
         return StepOutcome(status="ok", output={"late": True})
 
-    updated = engine.run(state, plan_fn=plan_fn, act_fn=act_fn)
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn))
     assert updated.final_answer is not None
     assert updated.final_answer.status == "failed"
     assert any(e.error and e.error.error_code == "STEP_TIMEOUT" for e in updated.events if e.event_type == "error")
@@ -156,7 +154,7 @@ def test_engine_context_fields_recorded_in_events() -> None:
     def plan_fn(_: AgentState) -> list[dict]:
         return [{"id": "s-a", "name": "step-a"}]
 
-    def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
         return StepOutcome(status="ok", output={"step": step.name})
 
     ctx = RunContext(
@@ -167,7 +165,7 @@ def test_engine_context_fields_recorded_in_events() -> None:
         tool_version="tool-v1",
         policy_version="policy-v1",
     )
-    updated = engine.run(state, plan_fn=plan_fn, act_fn=act_fn, context=ctx)
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn, context=ctx))
     assert any(
         e.event_type == "plan" and e.payload.get("context", {}).get("tenant_id") == "tenant-001" for e in updated.events
     )
@@ -184,20 +182,22 @@ def test_engine_backpressure_error_when_inflight_exceeded() -> None:
         limits=EngineLimits(max_steps=1, time_budget_ms=5000, step_timeout_ms=10, max_retry_per_step=0, max_inflight_acts=1)
     )
     state = build_initial_state("session_engine_backpressure")
-    # 占满并发门，模拟执行器过载场景。
-    engine._inflight_guard.acquire()
 
-    def plan_fn(_: AgentState) -> list[dict]:
-        return [{"id": "s-a", "name": "step-a"}]
+    async def scenario() -> AgentState:
+        await engine._inflight_guard.acquire()
+        try:
+            def plan_fn(_: AgentState) -> list[dict]:
+                return [{"id": "s-a", "name": "step-a"}]
 
-    def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
-        return StepOutcome(status="ok", output={"step": step.name})
+            async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+                return StepOutcome(status="ok", output={"step": step.name})
 
-    try:
-        updated = engine.run(state, plan_fn=plan_fn, act_fn=act_fn)
-    finally:
-        engine._inflight_guard.release()
+            return await engine.arun(state, plan_fn=plan_fn, act_fn=act_fn)
+        finally:
+            engine._inflight_guard.release()
 
+    updated = asyncio.run(scenario())
     assert updated.final_answer is not None
     assert updated.final_answer.status == "failed"
     assert any(e.error and e.error.error_code == "ACT_BACKPRESSURE" for e in updated.events if e.event_type == "error")
+
