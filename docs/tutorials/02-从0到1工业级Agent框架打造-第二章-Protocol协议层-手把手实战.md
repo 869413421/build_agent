@@ -1,99 +1,33 @@
-﻿# 《从0到1工业级Agent框架打造》第二章：Protocol 协议层（手把手实战 + 原理图解）
+# 《从0到1工业级Agent框架打造》第二章：先把“共同语言”焊死，系统才不会边跑边散架
 
-这一章你不仅会“照着抄能跑”，还会知道“为什么要这么写”。  
-目标是把协议层做成后续所有组件都能依赖的稳定地基。
+## 本章目标
 
----
+1. 搭建 Protocol 组件的完整对象模型：`AgentMessage`、`ToolCall`、`ToolResult`、`ExecutionEvent`、`FinalAnswer`、`AgentState`。
+2. 建立“协议先行”的工程纪律：新能力先对齐协议，再写实现。
+3. 交付可独立运行的 chapter 快照（代码 + 测试），并与主线 `src/agent_forge` 保持一致。
 
-## 这一章解决的核心问题
+## 前置条件
 
-在工程里，Agent 失败常见不是“模型不行”，而是协议失控：
+1. Python >= 3.11
+2. 已安装 `uv`
+3. 当前命令执行目录：仓库根目录（即包含 `src/`、`tests/`、`docs/` 的目录）
+4. 已完成第一章（你已经有最小 CLI/API 骨架）
 
-1. 模型输出字段经常变，解析逻辑到处 `if/else`。
-2. 工具重试时重复执行副作用（写库、发消息）。
-3. 线上问题无法定位到具体步骤。
-4. 评测系统拿不到结构化数据。
-
-Protocol 层就是为了解决这四件事。
-
----
-
-## 先看全局图：协议层在框架里的位置
-
-```mermaid
-flowchart LR
-  UserInput[用户输入] --> Engine[Engine Loop]
-  Engine --> Protocol[Protocol Objects]
-  Protocol --> ModelRuntime[Model Runtime]
-  Protocol --> ToolRuntime[Tool Runtime]
-  Protocol --> Obs[Observability]
-  Protocol --> Eval[Evaluator]
-  Protocol --> Safety[Safety Layer]
-```
-
-解释：  
-Protocol 不是某个模块的私有实现，而是整个系统的“共享数据平面”。
-
----
-
-## 先讲“面”：Protocol 主流程（一次请求如何穿过协议层）
-
-```mermaid
-flowchart TD
-  A[用户输入] --> B[AgentMessage]
-  B --> C[AgentState]
-  C --> D[Engine/Runtime 处理]
-  D --> E[ToolCall / ToolResult]
-  D --> F[ExecutionEvent]
-  D --> G[FinalAnswer]
-  E --> C
-  F --> C
-  G --> C
-```
-
-主流程解释：  
-1. 用户输入先被标准化成 `AgentMessage`，禁止裸字符串在系统里乱传。  
-2. 所有运行态数据汇总到 `AgentState`，避免状态分散。  
-3. 工具调用和执行事件都回写 `AgentState`，形成可观测、可回放链路。  
-4. 最终输出统一为 `FinalAnswer`，确保上层调用方拿到稳定结构。
-
----
-
-## 再讲“点”：为什么这些对象必须拆开而不是合并
-
-1. `ToolCall` 和 `ToolResult` 分离：便于做幂等与重试，不会把“请求”和“结果”混成一个不可追踪对象。  
-2. `ExecutionEvent` 独立：让观测系统只消费事件流，不耦合业务字段。  
-3. `FinalAnswer` 独立：输出契约稳定，避免上游 UI/接口解析被中间态字段污染。  
-4. `ErrorInfo` 独立：错误可机器化处理（重试/中止/降级），不是靠字符串猜测。
-
----
-
-## 第 0 步：创建目录结构
-
-在仓库根目录执行：
+## 环境准备与缺包兜底步骤（可直接复制）
 
 ```bash
-mkdir -p src/agent_forge/components/protocol
-mkdir -p tests
+uv add pydantic
+uv add --dev pytest
+uv sync --dev
 ```
+
+如果你是新环境，且 `uv` 还没安装：
 
 Windows PowerShell：
 
 ```powershell
-New-Item -ItemType Directory -Force src/agent_forge/components/protocol | Out-Null
-New-Item -ItemType Directory -Force tests | Out-Null
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
-
-为什么这样分层：  
-`core/protocol` 明确它是框架核心能力，不是业务模块或 API 适配层。
-
----
-
-## 第 0.5 步：准备可运行环境（最简版）
-
-直接按这 2 步执行：
-
-1. 安装 `uv`（如果你还没有）：
 
 macOS / Linux：
 
@@ -101,50 +35,113 @@ macOS / Linux：
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Windows（PowerShell）：
+## 章节快照目录
+
+1. 本章独立快照：`examples/from_zero_to_one/chapter_02/`
+2. 主线目标目录：`src/agent_forge/`
+
+## 先讲“面”：为什么第二章必须先做 Protocol
+
+第一章我们解决的是“项目能启动”。  
+第二章要解决的是“项目能协作”。
+
+没有统一协议时，工程会出现三个典型症状：
+
+1. 字段漂移：模型这周返回 `answer`，下周返回 `result`，到处写兜底 `if/else`。
+2. 状态漂移：Engine、Runtime、日志系统各存一份状态，出了问题没人知道哪份是真的。
+3. 错误漂移：错误只是一段字符串，系统不知道是该重试、降级还是立刻失败。
+
+Protocol 的价值，就是把这些漂移变成“结构化、可校验、可演进”的确定性边界。
+
+```mermaid
+flowchart TD
+  A[用户输入] --> B[AgentMessage]
+  B --> C[AgentState]
+  C --> D[Engine Loop]
+  D --> E[ToolCall]
+  E --> F[ToolResult]
+  D --> G[ExecutionEvent]
+  D --> H[FinalAnswer]
+  F --> C
+  G --> C
+  H --> C
+```
+
+这条链路你可以先记一句话：  
+所有输入输出，都先落到协议对象，再被各组件消费。
+
+## 再讲“点”：本章具体实施步骤
+
+### 第 1 步：创建 chapter_02 快照目录
+
+```bash
+mkdir -p examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain
+mkdir -p examples/from_zero_to_one/chapter_02/tests/unit
+```
+
+Windows PowerShell：
 
 ```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+New-Item -ItemType Directory -Force examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain | Out-Null
+New-Item -ItemType Directory -Force examples/from_zero_to_one/chapter_02/tests/unit | Out-Null
 ```
 
-2. 添加测试依赖：
+代码讲解：
 
-```bash
-uv add --dev pytest
+1. 设计动机：章节快照和主线分离，避免“教学代码”和“交付代码”互相污染。
+2. 工程取舍：本章只聚焦一个组件（Protocol），目录尽量薄，避免提前引入无关结构。
+3. 边界条件：只放 Protocol 相关代码，不引入 Engine/Model Runtime 逻辑。
+4. 失败模式：目录没建对会直接导致 `pytest` 导入失败。
+
+### 第 2 步：准备快照工程文件
+
+文件：[examples/from_zero_to_one/chapter_02/pyproject.toml](../../examples/from_zero_to_one/chapter_02/pyproject.toml)
+
+```toml
+[project]
+name = "agent-forge-chapter-02"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.11.0",
+  "pytest>=8.3.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
 ```
 
----
-
-## 第 0.6 步：修复 IDE 飘红（import 无法解析）
-
-如果你在 IDE 里看到下面这段 import 飘红：
+文件：[examples/from_zero_to_one/chapter_02/tests/conftest.py](../../examples/from_zero_to_one/chapter_02/tests/conftest.py)
 
 ```python
-from agent_forge.components.protocol import ...
+"""Test bootstrap for chapter 02 snapshot."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 ```
 
-按下面两步处理：
+代码讲解：
 
-1. 使用项目虚拟环境：
+1. 设计动机：让章节目录可以完全独立运行，不依赖仓库外部安装状态。
+2. 工程取舍：`pyproject.toml` 只保留本章最小依赖，降低读者启动阻力。
+3. 边界条件：测试路径固定依赖 `chapter_02/src`，目录移动后需要同步改 `conftest.py`。
+4. 失败模式：`ModuleNotFoundError: No module named 'agent_forge'` 基本都是这里路径没配好。
 
-```bash
-uv sync --dev
-```
+### 第 3 步：写 Protocol 导出入口
 
-2. 把 `src/` 设为源码根目录（Source Root）  
-   - PyCharm：右键 `framework` -> `Mark Directory as` -> `Sources Root`  
-   - VS Code/Pylance：项目已提供 `pyrightconfig.json`，重启语言服务即可
-
----
-
-## 第 1 步：创建协议导出入口
-
-文件：[src/agent_forge/components/protocol/__init__.py](../../src/agent_forge/components/protocol/__init__.py)
+文件：[examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py](../../examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py)
 
 ```python
-"""Protocol 组件导出。"""
+"""Protocol component exports."""
 
-from .schemas import (
+from agent_forge.components.protocol.domain.schemas import (
     PROTOCOL_VERSION,
     AgentMessage,
     AgentState,
@@ -169,22 +166,30 @@ __all__ = [
 ]
 ```
 
-为什么要 `__all__`：  
-统一公开接口，避免外部模块绕过协议边界直接依赖内部实现细节。
-
----
-
-## 第 2 步：创建协议 Schema 主文件
-
-文件：[src/agent_forge/components/protocol/schemas.py](../../src/agent_forge/components/protocol/schemas.py)
+文件：[examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/__init__.py](../../examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/__init__.py)
 
 ```python
-"""Protocol 组件（框架契约层）。
+"""Domain models for protocol component."""
+```
 
-为什么单独做这一层：
-1. 让 Engine、Model Runtime、Tool Runtime 共享同一套数据契约。
-2. 给 Observability/Evaluator 提供稳定的结构化输入。
-3. 通过版本字段控制协议演进，避免“改一个字段全链路崩”。
+代码讲解：
+
+1. 设计动机：把组件的公开 API 收敛在一个入口，外部不直接依赖内部目录细节。
+2. 工程取舍：使用 `__all__` 明确“稳定可用字段”，为后续演进预留空间。
+3. 边界条件：新增协议对象时必须同步更新 `__init__.py` 和 `__all__`。
+4. 失败模式：入口没导出会导致上层模块导入失败，或出现隐式依赖内部路径。
+
+### 第 4 步：写 Protocol 核心 Schema（完整可运行）
+
+文件：[examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py](../../examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py)
+
+```python
+"""Protocol component (framework contract layer).
+
+Why this layer exists:
+1. Share one data contract across Engine, Model Runtime, Tool Runtime.
+2. Provide stable structured inputs for Observability/Evaluator.
+3. Control schema evolution via protocol versions.
 """
 
 from __future__ import annotations
@@ -199,217 +204,131 @@ PROTOCOL_VERSION = "v1"
 
 
 def _now_iso() -> str:
-    """统一事件时间格式。
-
-    使用 UTC ISO 字符串，便于日志系统、数据仓库和跨时区排查统一处理。
-    """
+    """Return current UTC timestamp in ISO format."""
 
     return datetime.now(timezone.utc).isoformat()
 
 
 class ErrorInfo(BaseModel):
-    """统一错误结构。
+    """Unified runtime error contract."""
 
-    约束：
-    - 所有运行时错误最终都应映射到这里。
-    - `retryable` 由 Runtime 层给出，用于指导 Engine 的重试决策。
-    """
-
-    error_code: str = Field(..., min_length=1, description="错误码")
-    error_message: str = Field(..., min_length=1, description="错误信息")
-    retryable: bool = Field(default=False, description="是否可重试")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
+    error_code: str = Field(..., min_length=1, description="Error code")
+    error_message: str = Field(..., min_length=1, description="Error message")
+    retryable: bool = Field(default=False, description="Whether retryable")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
 
 
 class AgentMessage(BaseModel):
-    """智能体消息对象。
+    """Single message object in the agent conversation."""
 
-    说明：
-    - `role` 用 Literal 固定取值，防止上游传入未知角色破坏上下文拼装。
-    - `message_id` 自动生成，确保每条消息都可在 trace 中被唯一定位。
-    """
-
-    message_id: str = Field(default_factory=lambda: f"msg_{uuid4().hex}", description="消息 ID")
-    role: Literal["system", "developer", "user", "assistant", "tool"] = Field(..., description="消息角色")
-    content: str = Field(..., min_length=1, description="消息内容")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="扩展元数据")
-    created_at: str = Field(default_factory=_now_iso, description="创建时间")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
+    message_id: str = Field(default_factory=lambda: f"msg_{uuid4().hex}", description="Message ID")
+    role: Literal["system", "developer", "user", "assistant", "tool"] = Field(..., description="Message role")
+    content: str = Field(..., min_length=1, description="Message content")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Extended metadata")
+    created_at: str = Field(default_factory=_now_iso, description="Creation time")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
 
 
 class ToolCall(BaseModel):
-    """工具调用请求。
+    """Tool invocation request.
 
-    说明：
-    - `tool_call_id` 是幂等键；重试时可据此避免重复副作用执行。
-    - `principal` 预留给权限系统，后续可接入 capability 校验。
+    `tool_call_id` is the idempotency key.
     """
 
-    tool_call_id: str = Field(..., min_length=1, description="工具调用唯一 ID")
-    tool_name: str = Field(..., min_length=1, description="工具名称")
-    args: dict[str, Any] = Field(default_factory=dict, description="工具参数")
-    principal: str = Field(..., min_length=1, description="调用主体，用于权限控制")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
+    tool_call_id: str = Field(..., min_length=1, description="Unique tool call ID")
+    tool_name: str = Field(..., min_length=1, description="Tool name")
+    args: dict[str, Any] = Field(default_factory=dict, description="Tool arguments")
+    principal: str = Field(..., min_length=1, description="Caller principal for auth checks")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
 
     @field_validator("tool_call_id", "tool_name", "principal")
     @classmethod
     def _not_blank(cls, value: str) -> str:
-        # 防止“看起来有值、实际上是空白”的脏数据流入执行链路。
+        # Block whitespace-only values from entering the execution chain.
         if not value.strip():
-            raise ValueError("字段不能为空白字符")
+            raise ValueError("Field must not be blank")
         return value
 
 
 class ToolResult(BaseModel):
-    """工具调用结果。
+    """Tool execution result."""
 
-    说明：
-    - `status` 明确区分成功/失败，避免通过是否有异常字段来“猜状态”。
-    - `latency_ms` 是后续可观测性最小指标字段。
-    """
-
-    tool_call_id: str = Field(..., min_length=1, description="对应的调用 ID")
-    status: Literal["ok", "error"] = Field(..., description="执行状态")
-    output: dict[str, Any] = Field(default_factory=dict, description="输出内容")
-    error: ErrorInfo | None = Field(default=None, description="错误信息")
-    latency_ms: int = Field(default=0, ge=0, description="耗时毫秒")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
+    tool_call_id: str = Field(..., min_length=1, description="Matched tool call ID")
+    status: Literal["ok", "error"] = Field(..., description="Execution status")
+    output: dict[str, Any] = Field(default_factory=dict, description="Output payload")
+    error: ErrorInfo | None = Field(default=None, description="Error details")
+    latency_ms: int = Field(default=0, ge=0, description="Latency in milliseconds")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
 
 
 class ExecutionEvent(BaseModel):
-    """执行事件（用于 trace、回放、评测）。
+    """Execution event for tracing, replay and evaluation."""
 
-    字段语义：
-    - `trace_id`：一次链路的全局 ID。
-    - `run_id`：同一 trace 下某次运行实例。
-    - `step_id`：运行实例中的步骤定位点。
-    """
-
-    trace_id: str = Field(..., min_length=1, description="链路 ID")
-    run_id: str = Field(..., min_length=1, description="运行 ID")
-    step_id: str = Field(..., min_length=1, description="步骤 ID")
-    parent_step_id: str | None = Field(default=None, description="父步骤 ID")
+    trace_id: str = Field(..., min_length=1, description="Trace ID")
+    run_id: str = Field(..., min_length=1, description="Run ID")
+    step_id: str = Field(..., min_length=1, description="Step ID")
+    parent_step_id: str | None = Field(default=None, description="Parent step ID")
     event_type: Literal["plan", "tool_call", "tool_result", "state_update", "finish", "error"] = Field(
-        ..., description="事件类型"
+        ..., description="Event type"
     )
-    payload: dict[str, Any] = Field(default_factory=dict, description="事件数据")
-    error: ErrorInfo | None = Field(default=None, description="事件错误")
-    created_at: str = Field(default_factory=_now_iso, description="创建时间")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
+    payload: dict[str, Any] = Field(default_factory=dict, description="Event payload")
+    error: ErrorInfo | None = Field(default=None, description="Event error")
+    created_at: str = Field(default_factory=_now_iso, description="Creation time")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
 
 
 class FinalAnswer(BaseModel):
-    """结构化最终输出。
+    """Structured final output, kept domain-agnostic."""
 
-    设计目的：
-    - 保持领域无关，适用于任意 Agent 任务结果。
-    - 让前端展示、评测打分、审计留痕可以直接消费固定字段。
-    """
-
-    status: Literal["success", "partial", "failed"] = Field(..., description="任务完成状态")
-    summary: str = Field(..., min_length=1, description="结果摘要")
-    output: dict[str, Any] = Field(default_factory=dict, description="结构化结果内容")
-    artifacts: list[dict[str, Any]] = Field(default_factory=list, description="执行产物清单")
-    references: list[str] = Field(default_factory=list, description="可选参考信息")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
+    status: Literal["success", "partial", "failed"] = Field(..., description="Task completion status")
+    summary: str = Field(..., min_length=1, description="Summary of result")
+    output: dict[str, Any] = Field(default_factory=dict, description="Structured output payload")
+    artifacts: list[dict[str, Any]] = Field(default_factory=list, description="Execution artifacts")
+    references: list[str] = Field(default_factory=list, description="Optional references")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
 
 
 class AgentState(BaseModel):
-    """运行状态对象（Engine 的单一事实源）。
+    """Single source of truth for the engine runtime."""
 
-    约束：
-    - Engine 只读写这个状态对象，不在外部散落临时状态。
-    - 未来 snapshot/restore 将基于该对象序列化实现。
-    """
-
-    session_id: str = Field(..., min_length=1, description="会话 ID")
-    trace_id: str = Field(default_factory=lambda: f"trace_{uuid4().hex}", description="链路 ID")
-    run_id: str = Field(default_factory=lambda: f"run_{uuid4().hex}", description="运行 ID")
-    messages: list[AgentMessage] = Field(default_factory=list, description="消息列表")
-    tool_calls: list[ToolCall] = Field(default_factory=list, description="工具调用记录")
-    tool_results: list[ToolResult] = Field(default_factory=list, description="工具结果记录")
-    events: list[ExecutionEvent] = Field(default_factory=list, description="执行事件记录")
-    final_answer: FinalAnswer | None = Field(default=None, description="最终结构化输出")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
+    session_id: str = Field(..., min_length=1, description="Session ID")
+    trace_id: str = Field(default_factory=lambda: f"trace_{uuid4().hex}", description="Trace ID")
+    run_id: str = Field(default_factory=lambda: f"run_{uuid4().hex}", description="Run ID")
+    messages: list[AgentMessage] = Field(default_factory=list, description="Messages")
+    tool_calls: list[ToolCall] = Field(default_factory=list, description="Tool call records")
+    tool_results: list[ToolResult] = Field(default_factory=list, description="Tool result records")
+    events: list[ExecutionEvent] = Field(default_factory=list, description="Execution events")
+    final_answer: FinalAnswer | None = Field(default=None, description="Final structured output")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
 
     @field_validator("session_id")
     @classmethod
     def _session_id_not_blank(cls, value: str) -> str:
-        # session_id 是状态分区键，禁止空白可避免跨会话数据污染。
+        # Session ID is the partition key; blank values can pollute cross-session state.
         if not value.strip():
-            raise ValueError("session_id 不能为空白字符")
+            raise ValueError("session_id must not be blank")
         return value
 
 
 def build_initial_state(session_id: str) -> AgentState:
-    """创建初始状态。
-
-    这是 Engine loop 的标准起点，后续章节统一从这里进入执行流程。
-    """
+    """Build the initial state used by the engine loop."""
 
     return AgentState(session_id=session_id)
-````
-
----
-
-## 第 3 步：逐个解释“为什么要这么写”
-
-### 1) `PROTOCOL_VERSION = "v1"`
-- 目的：允许协议迭代，不破坏历史数据。
-- 后续价值：同一个系统可以同时处理 v1/v2 请求。
-
-### 2) `ErrorInfo`
-- 为什么拆成独立结构：Engine 要基于错误类型做策略（重试/降级/失败），不能靠字符串匹配。
-- `retryable` 的意义：把“是否重试”从业务逻辑中抽出来，避免分散在各处判断。
-
-### 3) `ToolCall.tool_call_id`
-- 目的：幂等键。
-- 场景：工具调用超时重试时，靠这个 ID 防止重复副作用执行。
-
-### 4) `ExecutionEvent(trace_id/run_id/step_id)`
-- `trace_id`：跨请求追踪。
-- `run_id`：一次运行实例。
-- `step_id`：精确定位到步骤。
-- 没这三个字段，后面可观测基本不可用。
-
-### 5) `FinalAnswer` 结构化
-- 不是只返回一段话，而是拆成 `status/summary/output/artifacts/references`。
-- 这样协议层保持通用，不绑定法律、客服或任何单一业务场景。
-
-### 6) `AgentState`
-- 它是 Engine 的“单一真相源（single source of truth）”。
-- 后续每一步都在更新这个状态，而不是各模块维护各自状态。
-
----
-
-## 图 2：对象关系图（你要先形成这个脑图）
-
-```mermaid
-flowchart TD
-  S[AgentState]
-  M[AgentMessage]
-  C[ToolCall]
-  R[ToolResult]
-  E[ExecutionEvent]
-  F[FinalAnswer]
-  X[ErrorInfo]
-
-  S --> M
-  S --> C
-  S --> R
-  S --> E
-  S --> F
-  R --> X
 ```
 
----
+代码讲解：
 
-## 第 4 步：写协议层测试
+1. 设计动机：所有核心对象都携带 `protocol_version`，协议演进可追踪。
+2. 工程取舍：先保证协议稳定，再考虑字段“优雅”；字段多一点比线上崩溃强。
+3. 边界条件：本章只定义协议，不定义业务语义（保持领域无关）。
+4. 失败模式：空白字段没拦住会导致幂等键失效、会话分区失效、重试策略失效。
 
-文件：[tests/unit/test_protocol.py](../../tests/unit/test_protocol.py)
+### 第 5 步：写测试（完整可运行）
+
+文件：[examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py](../../examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py)
 
 ```python
-"""Protocol 组件测试。"""
+"""Protocol component tests."""
 
 from __future__ import annotations
 
@@ -432,7 +351,7 @@ from agent_forge.components.protocol import (
 
 
 def test_initial_state_contains_required_ids_and_version() -> None:
-    """初始状态应自动带 trace/run/protocol 字段。"""
+    """Initial state should include trace/run/protocol fields."""
 
     state = build_initial_state("session_001")
     assert state.session_id == "session_001"
@@ -442,13 +361,13 @@ def test_initial_state_contains_required_ids_and_version() -> None:
 
 
 def test_protocol_roundtrip_json_serialization() -> None:
-    """协议对象应支持 JSON 序列化与反序列化。"""
+    """Protocol objects should support JSON round-trip."""
 
-    message = AgentMessage(role="user", content="公司拖欠工资")
+    message = AgentMessage(role="user", content="Company delayed salary payment")
     call = ToolCall(
         tool_call_id="tc_001",
-        tool_name="labor_law_search",
-        args={"query": "拖欠工资"},
+        tool_name="law_search",
+        args={"query": "salary delay"},
         principal="worker_user",
     )
     result = ToolResult(tool_call_id="tc_001", status="ok", output={"hits": 2}, latency_ms=18)
@@ -461,10 +380,10 @@ def test_protocol_roundtrip_json_serialization() -> None:
     )
     final = FinalAnswer(
         status="success",
-        summary="任务已完成并生成结构化结果",
-        output={"answer": "工资争议处理建议", "priority": "high"},
+        summary="Task completed with structured output",
+        output={"answer": "Collect evidence and file mediation first", "priority": "high"},
         artifacts=[{"type": "plan", "id": "plan_001"}],
-        references=["labor_law_search:doc_123"],
+        references=["law_search:doc_123"],
     )
     state = AgentState(
         session_id="session_002",
@@ -479,14 +398,14 @@ def test_protocol_roundtrip_json_serialization() -> None:
     data = json.loads(raw)
     loaded = AgentState.model_validate(data)
     assert loaded.session_id == "session_002"
-    assert loaded.tool_calls[0].tool_name == "labor_law_search"
+    assert loaded.tool_calls[0].tool_name == "law_search"
     assert loaded.final_answer is not None
     assert loaded.final_answer.protocol_version == PROTOCOL_VERSION
     assert loaded.final_answer.status == "success"
 
 
 def test_blank_fields_must_fail_validation() -> None:
-    """空白关键字段必须校验失败。"""
+    """Blank key fields must fail validation."""
 
     with pytest.raises(ValidationError):
         ToolCall(tool_call_id=" ", tool_name="t", args={}, principal="p")
@@ -496,81 +415,84 @@ def test_blank_fields_must_fail_validation() -> None:
 
 
 def test_error_info_schema() -> None:
-    """错误结构应稳定且带协议版本。"""
+    """Error schema should be stable and include version."""
 
     err = ErrorInfo(error_code="TOOL_TIMEOUT", error_message="tool timeout", retryable=True)
     assert err.retryable is True
     assert err.protocol_version == PROTOCOL_VERSION
 ```
 
-为什么这四类测试必须有：
-1. 初始化测试：防止 ID/版本漏填。  
-2. 序列化测试：防止日志、回放、评测时丢字段。  
-3. 输入校验测试：防止脏数据进入运行态。  
-4. 错误结构测试：防止后续重试策略失效。
+代码讲解：
 
----
+1. 覆盖目标：初始化、序列化、校验、错误模型四类最小稳定面。
+2. 断言设计：不只断言“有值”，还断言版本字段和关键状态字段。
+3. 失败注入：用空白字符串触发校验，验证协议边界确实生效。
+4. 工程价值：后续任何组件改动只要破坏协议，这组测试会第一时间报警。
 
-## 第 5 步：补充测试导入配置
+### 第 6 步：同步到主线（chapter_02 -> src）
 
-文件：[tests/conftest.py](../../tests/conftest.py)
+本章快照应与主线代码保持一致：
 
-```python
-from __future__ import annotations
+1. [examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py](../../examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py) 对齐 [src/agent_forge/components/protocol/__init__.py](../../src/agent_forge/components/protocol/__init__.py)
+2. [examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py](../../examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py) 对齐 [src/agent_forge/components/protocol/domain/schemas.py](../../src/agent_forge/components/protocol/domain/schemas.py)
+3. [examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py](../../examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py) 对齐 [tests/unit/test_protocol.py](../../tests/unit/test_protocol.py)
 
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-FRAMEWORK_DIR = ROOT / "framework"
-if str(FRAMEWORK_DIR) not in sys.path:
-    sys.path.insert(0, str(FRAMEWORK_DIR))
-```
-
-为什么要有它：  
-确保测试环境能导入本地源码，不依赖外部安装路径状态。
-
----
-
-## 第 6 步：运行与验证
+快速同步命令（可直接复制）：
 
 ```bash
-uv run pytest tests/unit/test_protocol.py
+cp examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py src/agent_forge/components/protocol/__init__.py
+cp examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py src/agent_forge/components/protocol/domain/schemas.py
+cp examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py tests/unit/test_protocol.py
 ```
 
----
+Windows PowerShell：
 
-## 图 3：错误处理决策流（Engine 将直接依赖）
-
-```mermaid
-flowchart TD
-  A[发生错误] --> B{有 ErrorInfo?}
-  B -- 否 --> C[转 UNKNOWN_ERROR 并记录]
-  B -- 是 --> D{retryable=true?}
-  D -- 是 --> E[进入重试策略]
-  D -- 否 --> F[终止当前步骤并写入事件]
-  E --> G[重试次数超限?]
-  G -- 否 --> H[重试执行]
-  G -- 是 --> F
+```powershell
+Copy-Item examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py src/agent_forge/components/protocol/__init__.py -Force
+Copy-Item examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py src/agent_forge/components/protocol/domain/schemas.py -Force
+Copy-Item examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py tests/unit/test_protocol.py -Force
 ```
 
----
+## 运行命令
 
-## 本章 DoD（完成标准）
+先验证 chapter 快照：
 
-1. 协议对象全部可序列化。  
-2. 每个核心对象带 `protocol_version`。  
-3. 关键字段校验生效（空白拦截、状态枚举）。  
-4. 协议测试通过并可重复执行。  
-5. 你能清楚解释每个对象“为什么存在”。  
+```bash
+uv run pytest examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py -q
+```
 
----
+再验证主线：
+
+```bash
+uv run pytest tests/unit/test_protocol.py -q
+```
+
+## 验证清单
+
+1. chapter_02 测试通过。
+2. 主线 `tests/unit/test_protocol.py` 测试通过。
+3. 本文所有路径可点击跳转到真实文件。
+4. chapter 快照与主线协议代码一致。
+
+## 常见问题
+
+1. 报错：`ModuleNotFoundError: No module named 'agent_forge'`  
+修复：确认 [examples/from_zero_to_one/chapter_02/tests/conftest.py](../../examples/from_zero_to_one/chapter_02/tests/conftest.py) 存在，且 `SRC = ROOT / "src"` 未改错。
+
+2. 报错：`ValidationError` 但看不懂字段  
+修复：先看 `ToolCall` 和 `AgentState` 的校验器，重点检查是否传入空白字符串。
+
+3. 报错：主线和 chapter_02 行为不一致  
+修复：按“第 6 步”逐文件对齐，避免只改了一边。
+
+## 本章 DoD
+
+1. Protocol 核心对象全部可序列化和反序列化。
+2. 关键输入边界（空白字段）被协议层拦截。
+3. chapter 快照和主线测试都通过。
+4. 你能清楚回答每个对象“为什么存在”。
 
 ## 下一章预告
 
-第三章进入 Engine（loop），但不会新定义协议字段。  
-Engine 只做一件事：消费本章协议，跑通 `plan -> act -> observe -> update -> finish`。
-
-
-
-
+1. 第三章进入 Engine 主循环，严格实现：`plan -> act -> observe -> reflect -> update -> finish`。
+2. 你会看到 Protocol 如何被 Engine 实际消费，以及为什么 reflect 不应该被省略。

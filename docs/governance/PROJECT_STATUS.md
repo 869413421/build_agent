@@ -81,4 +81,11 @@
 
 - 无
 
+## 会话增量（2026-03-02）
+
+1. 第二章教程已按“技术博主叙事风格 + 先面后点 + 可复制运行”重写，文件：`docs/tutorials/02-从0到1工业级Agent框架打造-第二章-Protocol协议层-手把手实战.md`。
+2. 新增 `chapter_02` 独立快照工程：`examples/from_zero_to_one/chapter_02/`，补齐 `pyproject.toml`、`tests/conftest.py`、协议代码与测试。
+3. 已完成双路径验证：`uv run pytest examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py -q` 与 `uv run pytest tests/unit/test_protocol.py -q`，均为 `4 passed`。
+4. 已修正第二章中的本机绝对路径表述，统一改为“仓库根目录”；并新增 chapter_02 -> 主线的 Bash/PowerShell 快速同步命令。
+
 
