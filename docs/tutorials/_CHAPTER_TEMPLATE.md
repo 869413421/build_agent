@@ -1,18 +1,33 @@
-﻿# 《从0到1工业级Agent框架打造》第X章：<标题>
+# 《从0到1工业级Agent框架打造》第X章：<标题>
 
-## 开篇：这章解决什么问题
+## 目标
 
-- 痛点 1：
-- 痛点 2：
-- 读者收益：
+1.
+2.
+3.
 
-## 本章目标
+## 前置条件
 
-1. 
-2. 
-3. 
+1. Python >= 3.11
+2. 已安装 `uv`
+3. 当前仓库根目录为执行目录
 
-## 先看全局图
+## 环境准备与缺包兜底步骤（可直接复制）
+
+```bash
+uv add pydantic pydantic-settings typer fastapi openai python-dotenv
+uv add --dev pytest
+uv sync --dev
+```
+
+## 章节快照目录
+
+1. 本章独立快照：`examples/from_zero_to_one/chapter_XX/`
+2. 主线目标目录：`src/agent_forge/`
+
+## 实施步骤
+
+### 第 1 步：先讲面（主流程）
 
 ```mermaid
 flowchart TD
@@ -20,55 +35,61 @@ flowchart TD
   B --> C[输出]
 ```
 
-## 环境准备（uv）
+### 第 2 步：创建目录与文件
 
 ```bash
-uv add --dev pytest
+# 可直接复制执行
+```
+
+### 第 3 步：写核心代码（完整可运行）
+
+文件：[src/agent_forge/<component>/<file>.py](../../src/agent_forge/<component>/<file>.py)
+
+```python
+# 完整代码，不允许省略关键逻辑
+```
+
+代码讲解：
+
+1. 设计动机：
+2. 工程取舍：
+3. 边界条件：
+4. 失败模式：
+
+### 第 4 步：写测试（完整可运行）
+
+文件：[tests/unit/<test_file>.py](../../tests/unit/<test_file>.py)
+
+```python
+# 完整测试代码
+```
+
+代码讲解：
+
+1. 覆盖目标：
+2. 断言设计：
+3. 失败注入：
+
+### 第 5 步：主线同步（chapter_XX -> src）
+
+1. 本章快照中哪些文件要同步到 `src/agent_forge/`
+2. 同步后执行哪些回归测试
+
+## 运行命令
+
+```bash
 uv sync --dev
+uv run pytest tests/unit/<test_file>.py -q
 ```
 
-## 手把手步骤
+## 验证清单
 
-### 第 1 步：创建目录/文件
+1. 命令可直接执行且通过
+2. 路径可点击且文件真实存在
+3. 代码块可独立复制运行
+4. 教程内容与当前仓库代码一致
 
-```bash
-# commands
-```
-
-### 第 2 步：写核心代码
-
-文件：[<relative/path.py>](../../<relative/path.py>)
-
-```python
-# 完整可运行代码（不要省略关键逻辑）
-```
-
-为什么这样写：
-
-1. 
-2. 
-
-### 第 3 步：写测试
-
-文件：[tests/<test_file>.py](../../tests/<test_file>.py)
-
-```python
-# 完整可运行测试代码
-```
-
-## 关键设计解释
-
-1. 字段/接口 A 为什么存在：
-2. 字段/接口 B 为什么这样约束：
-3. 失败模式如何处理：
-
-## 运行与验证
-
-```bash
-uv run pytest tests/<test_file>.py
-```
-
-## 常见报错与修复
+## 常见问题
 
 1. 报错：
    修复：
@@ -77,14 +98,11 @@ uv run pytest tests/<test_file>.py
 
 ## 本章 DoD
 
-1. 
-2. 
-3. 
+1.
+2.
+3.
 
 ## 下一章预告
 
-- 下一章做什么：
-- 与本章的承接关系：
-
-
-
+1. 下一章做什么：
+2. 与本章的承接关系：
