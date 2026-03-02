@@ -87,5 +87,10 @@
 2. 新增 `chapter_02` 独立快照工程：`examples/from_zero_to_one/chapter_02/`，补齐 `pyproject.toml`、`tests/conftest.py`、协议代码与测试。
 3. 已完成双路径验证：`uv run pytest examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py -q` 与 `uv run pytest tests/unit/test_protocol.py -q`，均为 `4 passed`。
 4. 已修正第二章中的本机绝对路径表述，统一改为“仓库根目录”；并新增 chapter_02 -> 主线的 Bash/PowerShell 快速同步命令。
+5. 第三章已补齐 `chapter_03` 独立快照（engine + protocol + tests + pyproject + conftest），并在第三章教程新增“快照 -> 主线”的快速同步命令（Bash/PowerShell）。
+6. 第三章运行命令已改为跨环境可直接执行的 `uv run pytest ... -q`，避免使用仅 Bash 可用的 `UV_CACHE_DIR=...` 前缀写法。
+7. 已回归验证：`uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q` 通过（11 passed）。
+8. 根据用户反馈，第三章已新增“术语白话卡片”（plan/act/observe/reflect/update/finish 的生活化解释与完整例子），并移除“环境准备与缺包兜底步骤”，降低学习陡峭度。
+9. 教程黄金标准已升级：新增“学习曲线控制标准（术语先白话、先最小可跑再深挖、复杂章节阅读路径）”，并将“环境准备与缺包兜底”调整为按需出现而非每章强制。
 
 

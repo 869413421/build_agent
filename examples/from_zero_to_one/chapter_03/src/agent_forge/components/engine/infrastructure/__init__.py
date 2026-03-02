@@ -1,0 +1,2 @@
+﻿"""Engine infrastructure layer placeholder."""
+
