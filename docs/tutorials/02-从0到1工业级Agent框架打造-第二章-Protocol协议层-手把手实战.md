@@ -1,4 +1,4 @@
-﻿# 《从0到1工业级Agent框架打造》第二章：先把“共同语言”焊死，系统才不会边跑边散架
+# 《从0到1工业级Agent框架打造》第二章：先把“共同语言”焊死，系统才不会边跑边散架
 
 ## 本章目标
 
@@ -95,6 +95,15 @@ New-Item -ItemType Directory -Force examples/from_zero_to_one/chapter_02/tests/u
 
 ### 第 2 步：准备快照工程文件
 
+创建命令：
+
+`ash
+touch examples/from_zero_to_one/chapter_02/pyproject.toml
+`
+
+`powershell
+New-Item -ItemType File -Force \"examples\\from_zero_to_one\\chapter_02\\pyproject.toml\" | Out-Null
+`
 文件：[examples/from_zero_to_one/chapter_02/pyproject.toml](../../examples/from_zero_to_one/chapter_02/pyproject.toml)
 
 ```toml
@@ -111,6 +120,15 @@ dependencies = [
 pythonpath = ["src"]
 ```
 
+创建命令：
+
+`ash
+touch examples/from_zero_to_one/chapter_02/tests/conftest.py
+`
+
+`powershell
+New-Item -ItemType File -Force \"examples\\from_zero_to_one\\chapter_02\\tests\\conftest.py\" | Out-Null
+`
 文件：[examples/from_zero_to_one/chapter_02/tests/conftest.py](../../examples/from_zero_to_one/chapter_02/tests/conftest.py)
 
 ```python
@@ -136,6 +154,15 @@ if str(SRC) not in sys.path:
 
 ### 第 3 步：写 Protocol 导出入口
 
+创建命令：
+
+`ash
+touch examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py
+`
+
+`powershell
+New-Item -ItemType File -Force \"examples\\from_zero_to_one\\chapter_02\\src\\agent_forge\\components\\protocol\\__init__.py\" | Out-Null
+`
 文件：[examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py](../../examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py)
 
 ```python
@@ -166,6 +193,15 @@ __all__ = [
 ]
 ```
 
+创建命令：
+
+`ash
+touch examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/__init__.py
+`
+
+`powershell
+New-Item -ItemType File -Force \"examples\\from_zero_to_one\\chapter_02\\src\\agent_forge\\components\\protocol\\domain\\__init__.py\" | Out-Null
+`
 文件：[examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/__init__.py](../../examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/__init__.py)
 
 ```python
@@ -181,6 +217,15 @@ __all__ = [
 
 ### 第 4 步：写 Protocol 核心 Schema（完整可运行）
 
+创建命令：
+
+`ash
+touch examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py
+`
+
+`powershell
+New-Item -ItemType File -Force \"examples\\from_zero_to_one\\chapter_02\\src\\agent_forge\\components\\protocol\\domain\\schemas.py\" | Out-Null
+`
 文件：[examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py](../../examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py)
 
 ```python
@@ -325,6 +370,15 @@ def build_initial_state(session_id: str) -> AgentState:
 
 ### 第 5 步：写测试（完整可运行）
 
+创建命令：
+
+`ash
+touch examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py
+`
+
+`powershell
+New-Item -ItemType File -Force \"examples\\from_zero_to_one\\chapter_02\\tests\\unit\\test_protocol.py\" | Out-Null
+`
 文件：[examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py](../../examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py)
 
 ```python
