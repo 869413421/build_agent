@@ -69,7 +69,7 @@ flowchart TD
 
 ## 再讲“点”：本章具体实施步骤
 
-### 第 1 步：创建 主线章节 主线目录
+### 第 1 步：创建目录
 
 ```bash
 mkdir -p src/agent_forge/components/protocol/domain

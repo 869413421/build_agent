@@ -121,3 +121,5 @@
 
 ## 阻塞项（更新）
 - examples/from_zero_to_one/chapter_03|04 下 6 个 pytest-cache-files-* 目录存在系统 ACL 拒绝，当前会话无权删除；不影响主线代码与教程执行，但会在 git status 中显示权限 warning。
+
+27. 已按用户反馈清理第一章教程中的‘回放迁移噪音措辞’：修复主流程图与第5步文案、补齐空代码块说明、恢复被污染的示例代码字符串（agent_forge_chapter_01）。
