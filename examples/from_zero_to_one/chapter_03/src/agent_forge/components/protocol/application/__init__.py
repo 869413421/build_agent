@@ -1,2 +1,0 @@
-﻿"""Protocol application layer placeholder."""
-

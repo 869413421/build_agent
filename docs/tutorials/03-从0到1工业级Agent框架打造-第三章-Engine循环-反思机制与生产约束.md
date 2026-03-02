@@ -1,4 +1,4 @@
-# 《从0到1工业级Agent框架打造》第三章：Engine 循环（反思机制与生产约束）
+﻿# 《从0到1工业级Agent框架打造》第三章：Engine 循环（反思机制与生产约束）
 
 本章目标：将 Engine 重构为 `asyncio + 协程` 形态，打通可恢复、可限流、可追踪、可测试的生产导向执行闭环。
 
@@ -19,21 +19,7 @@
 2. 你可以正常运行：`uv run pytest tests/unit/test_protocol.py -q`。
 3. 当前命令执行目录：仓库根目录（包含 `src/`、`tests/`、`docs/`）。
 
-## 承接上章（复制快照）
 
-先把上一章可运行快照完整复制一份，再在新章节目录上增量改造，避免从空目录重复搭建。
-
-`ash
-cp -r examples/from_zero_to_one/chapter_02 examples/from_zero_to_one/chapter_03
-`
-
-`powershell
-Copy-Item -Recurse -Force "examples\\from_zero_to_one\\chapter_02" "examples\\from_zero_to_one\\chapter_03"
-`
-## 章节快照目录
-
-1. 本章独立快照：`examples/from_zero_to_one/chapter_03/`
-2. 主线目标目录：`src/agent_forge/`
 
 ## 本章怎么学（先不“啃源码”）
 
@@ -1053,9 +1039,9 @@ def test_engine_backpressure_error_when_inflight_exceeded() -> None:
 
 ---
 
-### 第 5 步：主线同步（chapter_03 -> src/tests）
+### 第 5 步：主线同步（主线章节 -> src/tests）
 
-本章快照与主线需要同步 4 个关键文件：
+本章主线与主线需要同步 4 个关键文件：
 
 1. `engine` 导出入口：`src/agent_forge/components/engine/__init__.py`
 2. `engine` 主循环：`src/agent_forge/components/engine/application/loop.py`
@@ -1065,19 +1051,11 @@ def test_engine_backpressure_error_when_inflight_exceeded() -> None:
 快速同步命令（Bash）：
 
 ```bash
-cp examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/__init__.py src/agent_forge/components/engine/__init__.py
-cp examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/application/loop.py src/agent_forge/components/engine/application/loop.py
-cp examples/from_zero_to_one/chapter_03/tests/unit/test_engine.py tests/unit/test_engine.py
-cp examples/from_zero_to_one/chapter_03/tests/unit/test_protocol.py tests/unit/test_protocol.py
 ```
 
 Windows PowerShell：
 
 ```powershell
-Copy-Item examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/__init__.py src/agent_forge/components/engine/__init__.py -Force
-Copy-Item examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/application/loop.py src/agent_forge/components/engine/application/loop.py -Force
-Copy-Item examples/from_zero_to_one/chapter_03/tests/unit/test_engine.py tests/unit/test_engine.py -Force
-Copy-Item examples/from_zero_to_one/chapter_03/tests/unit/test_protocol.py tests/unit/test_protocol.py -Force
 ```
 
 ---
@@ -1118,4 +1096,6 @@ uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q
 先执行 `uv add --dev pytest` 和 `uv sync --dev`。
 
 ---
+
+
 

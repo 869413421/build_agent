@@ -114,3 +114,10 @@
 22. CLI 子命令模式已固定：主线与 chapter_01 快照均新增 @app.callback()，避免单命令模式导致 agent-forge version 解析失败；第一章教程已同步说明该机制。
 
 23. 第一章教程已补充 CLI 子命令修复后的验证闭环：新增主线命令预期输出，并新增 uv sync --dev 刷新入口步骤。
+
+24. 教程体系已切换为主线单轨：重写 docs/tutorials/_TUTORIAL_GOLD_STANDARD.md 与 docs/tutorials/_CHAPTER_TEMPLATE.md，新增 docs/tutorials/_CHAPTER_INDEX.md（Tag 回放索引）。
+25. 01~04 章教程已完成去快照迁移：移除 examples/from_zero_to_one/chapter_* 路径引用与‘复制快照/同步快照’流程，统一锚定 src/tests 主线。
+26. 已执行快照目录清理：chapter_01/02 及 chapter_03/04 中可删除内容已移除；剩余 6 个 pytest-cache-files-* 目录因 ACL 拒绝删除（见阻塞项）。
+
+## 阻塞项（更新）
+- examples/from_zero_to_one/chapter_03|04 下 6 个 pytest-cache-files-* 目录存在系统 ACL 拒绝，当前会话无权删除；不影响主线代码与教程执行，但会在 git status 中显示权限 warning。

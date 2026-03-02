@@ -1,10 +1,10 @@
-# 《从0到1工业级Agent框架打造》第二章：先把“共同语言”焊死，系统才不会边跑边散架
+﻿# 《从0到1工业级Agent框架打造》第二章：先把“共同语言”焊死，系统才不会边跑边散架
 
 ## 本章目标
 
 1. 搭建 Protocol 组件的完整对象模型：`AgentMessage`、`ToolCall`、`ToolResult`、`ExecutionEvent`、`FinalAnswer`、`AgentState`。
 2. 建立“协议先行”的工程纪律：新能力先对齐协议，再写实现。
-3. 交付可独立运行的 chapter 快照（代码 + 测试），并与主线 `src/agent_forge` 保持一致。
+3. 交付可独立运行的 主线 主线（代码 + 测试），并与主线 `src/agent_forge` 保持一致。
 
 ## 前置条件
 
@@ -35,21 +35,7 @@ macOS / Linux：
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-## 承接上章（复制快照）
 
-先把上一章可运行快照完整复制一份，再在新章节目录上增量改造，避免从空目录重复搭建。
-
-`ash
-cp -r examples/from_zero_to_one/chapter_01 examples/from_zero_to_one/chapter_02
-`
-
-`powershell
-Copy-Item -Recurse -Force "examples\\from_zero_to_one\\chapter_01" "examples\\from_zero_to_one\\chapter_02"
-`
-## 章节快照目录
-
-1. 本章独立快照：`examples/from_zero_to_one/chapter_02/`
-2. 主线目标目录：`src/agent_forge/`
 
 ## 先讲“面”：为什么第二章必须先做 Protocol
 
@@ -83,39 +69,39 @@ flowchart TD
 
 ## 再讲“点”：本章具体实施步骤
 
-### 第 1 步：创建 chapter_02 快照目录
+### 第 1 步：创建 主线章节 主线目录
 
 ```bash
-mkdir -p examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain
-mkdir -p examples/from_zero_to_one/chapter_02/tests/unit
+mkdir -p src/agent_forge/components/protocol/domain
+mkdir -p tests/unit
 ```
 
 Windows PowerShell：
 
 ```powershell
-New-Item -ItemType Directory -Force examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain | Out-Null
-New-Item -ItemType Directory -Force examples/from_zero_to_one/chapter_02/tests/unit | Out-Null
+New-Item -ItemType Directory -Force src/agent_forge/components/protocol/domain | Out-Null
+New-Item -ItemType Directory -Force tests/unit | Out-Null
 ```
 
 代码讲解：
 
-1. 设计动机：章节快照和主线分离，避免“教学代码”和“交付代码”互相污染。
+1. 设计动机：章节主线和主线分离，避免“教学代码”和“交付代码”互相污染。
 2. 工程取舍：本章只聚焦一个组件（Protocol），目录尽量薄，避免提前引入无关结构。
 3. 边界条件：只放 Protocol 相关代码，不引入 Engine/Model Runtime 逻辑。
 4. 失败模式：目录没建对会直接导致 `pytest` 导入失败。
 
-### 第 2 步：准备快照工程文件
+### 第 2 步：准备主线工程文件
 
 创建命令：
 
-`ash
-touch examples/from_zero_to_one/chapter_02/pyproject.toml
-`
+```ash
+touch pyproject.toml
+```
 
-`powershell
-New-Item -ItemType File -Force \"examples\\from_zero_to_one\\chapter_02\\pyproject.toml\" | Out-Null
-`
-文件：[examples/from_zero_to_one/chapter_02/pyproject.toml](../../examples/from_zero_to_one/chapter_02/pyproject.toml)
+```powershell
+New-Item -ItemType File -Force "examples\\from_zero_to_one\\主线章节\\pyproject.toml" | Out-Null
+```
+文件：[pyproject.toml](../../pyproject.toml)
 
 ```toml
 [project]
@@ -133,17 +119,17 @@ pythonpath = ["src"]
 
 创建命令：
 
-`ash
-touch examples/from_zero_to_one/chapter_02/tests/conftest.py
-`
+```ash
+touch tests/conftest.py
+```
 
-`powershell
-New-Item -ItemType File -Force \"examples\\from_zero_to_one\\chapter_02\\tests\\conftest.py\" | Out-Null
-`
-文件：[examples/from_zero_to_one/chapter_02/tests/conftest.py](../../examples/from_zero_to_one/chapter_02/tests/conftest.py)
+```powershell
+New-Item -ItemType File -Force "examples\\from_zero_to_one\\主线章节\\tests\\conftest.py" | Out-Null
+```
+文件：[tests/conftest.py](../../tests/conftest.py)
 
 ```python
-"""Test bootstrap for chapter 02 snapshot."""
+"""Test bootstrap for 主线 02 snapshot."""
 
 from __future__ import annotations
 
@@ -160,21 +146,21 @@ if str(SRC) not in sys.path:
 
 1. 设计动机：让章节目录可以完全独立运行，不依赖仓库外部安装状态。
 2. 工程取舍：`pyproject.toml` 只保留本章最小依赖，降低读者启动阻力。
-3. 边界条件：测试路径固定依赖 `chapter_02/src`，目录移动后需要同步改 `conftest.py`。
+3. 边界条件：测试路径固定依赖 `主线章节/src`，目录移动后需要同步改 `conftest.py`。
 4. 失败模式：`ModuleNotFoundError: No module named 'agent_forge'` 基本都是这里路径没配好。
 
 ### 第 3 步：写 Protocol 导出入口
 
 创建命令：
 
-`ash
-touch examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py
+`ash
+touch src/agent_forge/components/protocol/__init__.py
 `
 
 `powershell
-New-Item -ItemType File -Force \"examples\\from_zero_to_one\\chapter_02\\src\\agent_forge\\components\\protocol\\__init__.py\" | Out-Null
+New-Item -ItemType File -Force "examples\\from_zero_to_one\\主线章节\\src\\agent_forge\\components\\protocol\\__init__.py" | Out-Null
 `
-文件：[examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py](../../examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py)
+文件：[src/agent_forge/components/protocol/__init__.py](../../src/agent_forge/components/protocol/__init__.py)
 
 ```python
 """Protocol component exports."""
@@ -206,14 +192,14 @@ __all__ = [
 
 创建命令：
 
-`ash
-touch examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/__init__.py
+`ash
+touch src/agent_forge/components/protocol/domain/__init__.py
 `
 
 `powershell
-New-Item -ItemType File -Force \"examples\\from_zero_to_one\\chapter_02\\src\\agent_forge\\components\\protocol\\domain\\__init__.py\" | Out-Null
+New-Item -ItemType File -Force "examples\\from_zero_to_one\\主线章节\\src\\agent_forge\\components\\protocol\\domain\\__init__.py" | Out-Null
 `
-文件：[examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/__init__.py](../../examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/__init__.py)
+文件：[src/agent_forge/components/protocol/domain/__init__.py](../../src/agent_forge/components/protocol/domain/__init__.py)
 
 ```python
 """Domain models for protocol component."""
@@ -230,14 +216,14 @@ New-Item -ItemType File -Force \"examples\\from_zero_to_one\\chapter_02\\src\\ag
 
 创建命令：
 
-`ash
-touch examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py
+`ash
+touch src/agent_forge/components/protocol/domain/schemas.py
 `
 
 `powershell
-New-Item -ItemType File -Force \"examples\\from_zero_to_one\\chapter_02\\src\\agent_forge\\components\\protocol\\domain\\schemas.py\" | Out-Null
+New-Item -ItemType File -Force "examples\\from_zero_to_one\\主线章节\\src\\agent_forge\\components\\protocol\\domain\\schemas.py" | Out-Null
 `
-文件：[examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py](../../examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py)
+文件：[src/agent_forge/components/protocol/domain/schemas.py](../../src/agent_forge/components/protocol/domain/schemas.py)
 
 ```python
 """Protocol component (framework contract layer).
@@ -383,14 +369,14 @@ def build_initial_state(session_id: str) -> AgentState:
 
 创建命令：
 
-`ash
-touch examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py
+`ash
+touch tests/unit/test_protocol.py
 `
 
 `powershell
-New-Item -ItemType File -Force \"examples\\from_zero_to_one\\chapter_02\\tests\\unit\\test_protocol.py\" | Out-Null
+New-Item -ItemType File -Force "examples\\from_zero_to_one\\主线章节\\tests\\unit\\test_protocol.py" | Out-Null
 `
-文件：[examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py](../../examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py)
+文件：[tests/unit/test_protocol.py](../../tests/unit/test_protocol.py)
 
 ```python
 """Protocol component tests."""
@@ -494,28 +480,22 @@ def test_error_info_schema() -> None:
 3. 失败注入：用空白字符串触发校验，验证协议边界确实生效。
 4. 工程价值：后续任何组件改动只要破坏协议，这组测试会第一时间报警。
 
-### 第 6 步：同步到主线（chapter_02 -> src）
+### 第 6 步：主线一致性检查
 
-本章快照应与主线代码保持一致：
+本章主线应与主线代码保持一致：
 
-1. [examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py](../../examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py) 对齐 [src/agent_forge/components/protocol/__init__.py](../../src/agent_forge/components/protocol/__init__.py)
-2. [examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py](../../examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py) 对齐 [src/agent_forge/components/protocol/domain/schemas.py](../../src/agent_forge/components/protocol/domain/schemas.py)
-3. [examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py](../../examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py) 对齐 [tests/unit/test_protocol.py](../../tests/unit/test_protocol.py)
+1. [src/agent_forge/components/protocol/__init__.py](../../src/agent_forge/components/protocol/__init__.py) 对齐 [src/agent_forge/components/protocol/__init__.py](../../src/agent_forge/components/protocol/__init__.py)
+2. [src/agent_forge/components/protocol/domain/schemas.py](../../src/agent_forge/components/protocol/domain/schemas.py) 对齐 [src/agent_forge/components/protocol/domain/schemas.py](../../src/agent_forge/components/protocol/domain/schemas.py)
+3. [tests/unit/test_protocol.py](../../tests/unit/test_protocol.py) 对齐 [tests/unit/test_protocol.py](../../tests/unit/test_protocol.py)
 
 快速同步命令（可直接复制）：
 
 ```bash
-cp examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py src/agent_forge/components/protocol/__init__.py
-cp examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py src/agent_forge/components/protocol/domain/schemas.py
-cp examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py tests/unit/test_protocol.py
 ```
 
 Windows PowerShell：
 
 ```powershell
-Copy-Item examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py src/agent_forge/components/protocol/__init__.py -Force
-Copy-Item examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py src/agent_forge/components/protocol/domain/schemas.py -Force
-Copy-Item examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py tests/unit/test_protocol.py -Force
 ```
 
 ## 创建目录与文件命令（硬标准）
@@ -523,37 +503,35 @@ Copy-Item examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py tests
 不要一口气全部创建。按下面顺序，走到对应代码步骤时再执行下一条命令。
 
 Bash（分步执行）：
-1. `mkdir -p examples/from_zero_to_one/chapter_02`
-2. `mkdir -p examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol`
-3. `mkdir -p examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain`
-4. `mkdir -p examples/from_zero_to_one/chapter_02/tests`
-5. `mkdir -p examples/from_zero_to_one/chapter_02/tests/unit`
-6. `touch examples/from_zero_to_one/chapter_02/pyproject.toml`
-7. `touch examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py`
-8. `touch examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/__init__.py`
-9. `touch examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py`
-10. `touch examples/from_zero_to_one/chapter_02/tests/conftest.py`
-11. `touch examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py`
+2. `mkdir -p src/agent_forge/components/protocol`
+3. `mkdir -p src/agent_forge/components/protocol/domain`
+4. `mkdir -p tests`
+5. `mkdir -p tests/unit`
+6. `touch pyproject.toml`
+7. `touch src/agent_forge/components/protocol/__init__.py`
+8. `touch src/agent_forge/components/protocol/domain/__init__.py`
+9. `touch src/agent_forge/components/protocol/domain/schemas.py`
+10. `touch tests/conftest.py`
+11. `touch tests/unit/test_protocol.py`
 
 Windows PowerShell（分步执行）：
-1. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_02" | Out-Null`
-2. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_02\src\agent_forge\components\protocol" | Out-Null`
-3. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_02\src\agent_forge\components\protocol\domain" | Out-Null`
-4. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_02\tests" | Out-Null`
-5. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_02\tests\unit" | Out-Null`
-6. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_02\pyproject.toml" | Out-Null`
-7. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_02\src\agent_forge\components\protocol\__init__.py" | Out-Null`
-8. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_02\src\agent_forge\components\protocol\domain\__init__.py" | Out-Null`
-9. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_02\src\agent_forge\components\protocol\domain\schemas.py" | Out-Null`
-10. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_02\tests\conftest.py" | Out-Null`
-11. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_02\tests\unit\test_protocol.py" | Out-Null`
+2. `New-Item -ItemType Directory -Force "src\agent_forge\components\protocol" | Out-Null`
+3. `New-Item -ItemType Directory -Force "src\agent_forge\components\protocol\domain" | Out-Null`
+4. `New-Item -ItemType Directory -Force "tests" | Out-Null`
+5. `New-Item -ItemType Directory -Force "tests\unit" | Out-Null`
+6. `New-Item -ItemType File -Force "pyproject.toml" | Out-Null`
+7. `New-Item -ItemType File -Force "src\agent_forge\components\protocol\__init__.py" | Out-Null`
+8. `New-Item -ItemType File -Force "src\agent_forge\components\protocol\domain\__init__.py" | Out-Null`
+9. `New-Item -ItemType File -Force "src\agent_forge\components\protocol\domain\schemas.py" | Out-Null`
+10. `New-Item -ItemType File -Force "tests\conftest.py" | Out-Null`
+11. `New-Item -ItemType File -Force "tests\unit\test_protocol.py" | Out-Null`
 
 ## 运行命令
 
-先验证 chapter 快照：
+先验证 主线 主线：
 
 ```bash
-uv run pytest examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py -q
+uv run pytest tests/unit/test_protocol.py -q
 ```
 
 再验证主线：
@@ -564,33 +542,34 @@ uv run pytest tests/unit/test_protocol.py -q
 
 ## 验证清单
 
-1. chapter_02 测试通过。
+1. 主线章节 测试通过。
 2. 主线 `tests/unit/test_protocol.py` 测试通过。
 3. 本文所有路径可点击跳转到真实文件。
-4. chapter 快照与主线协议代码一致。
+4. 主线 主线与主线协议代码一致。
 
 ## 常见问题
 
 1. 报错：`ModuleNotFoundError: No module named 'agent_forge'`  
-修复：确认 [examples/from_zero_to_one/chapter_02/tests/conftest.py](../../examples/from_zero_to_one/chapter_02/tests/conftest.py) 存在，且 `SRC = ROOT / "src"` 未改错。
+修复：确认 [tests/conftest.py](../../tests/conftest.py) 存在，且 `SRC = ROOT / "src"` 未改错。
 
 2. 报错：`ValidationError` 但看不懂字段  
 修复：先看 `ToolCall` 和 `AgentState` 的校验器，重点检查是否传入空白字符串。
 
-3. 报错：主线和 chapter_02 行为不一致  
+3. 报错：主线和 主线章节 行为不一致  
 修复：按“第 6 步”逐文件对齐，避免只改了一边。
 
 ## 本章 DoD
 
 1. Protocol 核心对象全部可序列化和反序列化。
 2. 关键输入边界（空白字段）被协议层拦截。
-3. chapter 快照和主线测试都通过。
+3. 主线 主线和主线测试都通过。
 4. 你能清楚回答每个对象“为什么存在”。
 
 ## 下一章预告
 
 1. 第三章进入 Engine 主循环，严格实现：`plan -> act -> observe -> reflect -> update -> finish`。
 2. 你会看到 Protocol 如何被 Engine 实际消费，以及为什么 reflect 不应该被省略。
+
 
 
 

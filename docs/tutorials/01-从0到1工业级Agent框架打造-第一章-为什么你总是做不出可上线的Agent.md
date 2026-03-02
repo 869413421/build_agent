@@ -23,7 +23,6 @@ uv sync --dev
 
 ## 代码放在哪
 
-- 本章独立快照：`examples/from_zero_to_one/chapter_01/`
 - 主线演进目录：`src/agent_forge/`
 
 ## 开干
@@ -42,24 +41,24 @@ uv sync --dev
 
 ```mermaid
 flowchart TD
-  A[创建 chapter_01 工程骨架] --> B[补齐 CLI 与 API 最小入口]
+  A[创建 主线章节 工程骨架] --> B[补齐 CLI 与 API 最小入口]
   B --> C[写 bootstrap 单测]
   C --> D[运行 pytest 验证]
-  D --> E[全量同步到主线]
+  D --> E[全量主线一致性检查]
 ```
 
 ### 第 2 步：创建目录和文件
 
 ```bash
-mkdir -p examples/from_zero_to_one/chapter_01/src/agent_forge/apps/api
-mkdir -p examples/from_zero_to_one/chapter_01/tests/unit
+mkdir -p src/agent_forge/apps/api
+mkdir -p tests/unit
 ```
 
 Windows PowerShell：
 
 ```powershell
-New-Item -ItemType Directory -Force examples/from_zero_to_one/chapter_01/src/agent_forge/apps/api | Out-Null
-New-Item -ItemType Directory -Force examples/from_zero_to_one/chapter_01/tests/unit | Out-Null
+New-Item -ItemType Directory -Force src/agent_forge/apps/api | Out-Null
+New-Item -ItemType Directory -Force tests/unit | Out-Null
 ```
 
 ### 第 3 步：写核心代码（可以直接跑的版本）
@@ -67,14 +66,14 @@ New-Item -ItemType Directory -Force examples/from_zero_to_one/chapter_01/tests/u
 创建命令：
 
 ```bash
-touch examples/from_zero_to_one/chapter_01/pyproject.toml
+touch pyproject.toml
 ```
 
 ```powershell
-New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_01\pyproject.toml" | Out-Null
+New-Item -ItemType File -Force "pyproject.toml" | Out-Null
 ```
 
-**文件：** `examples/from_zero_to_one/chapter_01/pyproject.toml`
+**文件：** `pyproject.toml`
 
 ```toml
 [project]
@@ -94,23 +93,23 @@ agent-forge = "agent_forge.apps.cli:app"
 创建命令：
 
 ```bash
-touch examples/from_zero_to_one/chapter_01/src/agent_forge/apps/cli.py
+touch src/agent_forge/apps/cli.py
 ```
 
 ```powershell
-New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_01\src\agent_forge\apps\cli.py" | Out-Null
+New-Item -ItemType File -Force "src\agent_forge\apps\cli.py" | Out-Null
 ```
 
-**文件：** `examples/from_zero_to_one/chapter_01/src/agent_forge/apps/cli.py`
+**文件：** `src/agent_forge/apps/cli.py`
 
 ```python
-"""CLI entry for chapter 01."""
+"""CLI entry for 主线 01."""
 
 from __future__ import annotations
 
 import typer
 
-app = typer.Typer(help="agent_forge chapter 01 CLI")
+app = typer.Typer(help="agent_forge 主线 01 CLI")
 
 
 @app.callback()
@@ -120,7 +119,7 @@ def main() -> None:
 
 @app.command()
 def version() -> None:
-    """Print chapter bootstrap version."""
+    """Print 主线 bootstrap version."""
 
     typer.echo("agent-forge-chapter-01")
 
@@ -134,21 +133,21 @@ if __name__ == "__main__":
 创建命令：
 
 ```bash
-touch examples/from_zero_to_one/chapter_01/src/agent_forge/apps/api/app.py
+touch src/agent_forge/apps/api/app.py
 ```
 
 ```powershell
-New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_01\src\agent_forge\apps\api\app.py" | Out-Null
+New-Item -ItemType File -Force "src\agent_forge\apps\api\app.py" | Out-Null
 ```
 
-**文件：** `examples/from_zero_to_one/chapter_01/src/agent_forge/apps/api/app.py`
+**文件：** `src/agent_forge/apps/api/app.py`
 
 ```python
-"""FastAPI app for chapter 01."""
+"""FastAPI app for 主线 01."""
 
 from fastapi import FastAPI
 
-app = FastAPI(title="agent_forge_chapter_01")
+app = FastAPI(title="agent_forge_主线章节")
 
 
 @app.get("/v1/health")
@@ -161,17 +160,17 @@ def health() -> dict[str, str]:
 创建命令：
 
 ```bash
-touch examples/from_zero_to_one/chapter_01/tests/conftest.py
+touch tests/conftest.py
 ```
 
 ```powershell
-New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_01\tests\conftest.py" | Out-Null
+New-Item -ItemType File -Force "tests\conftest.py" | Out-Null
 ```
 
-**文件：** `examples/from_zero_to_one/chapter_01/tests/conftest.py`
+**文件：** `tests/conftest.py`
 
 ```python
-"""Test bootstrap for chapter 01 snapshot."""
+"""Test bootstrap for 主线 01 snapshot."""
 
 from __future__ import annotations
 
@@ -187,17 +186,17 @@ if str(SRC) not in sys.path:
 创建命令：
 
 ```bash
-touch examples/from_zero_to_one/chapter_01/tests/unit/test_bootstrap.py
+touch tests/unit/test_bootstrap.py
 ```
 
 ```powershell
-New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_01\tests\unit\test_bootstrap.py" | Out-Null
+New-Item -ItemType File -Force "tests\unit\test_bootstrap.py" | Out-Null
 ```
 
-**文件：** `examples/from_zero_to_one/chapter_01/tests/unit/test_bootstrap.py`
+**文件：** `tests/unit/test_bootstrap.py`
 
 ```python
-"""Chapter 01 bootstrap tests."""
+"""主线 01 bootstrap tests."""
 
 from __future__ import annotations
 
@@ -208,28 +207,26 @@ def test_health_endpoint_function() -> None:
     assert health() == {"status": "ok"}
 ```
 
-### 第 5 步：同步到主线（chapter_01 -> src）
+### 第 5 步：主线一致性检查
 
-这一节直接“覆盖同步”当天快照目录下所有代码到主线（`chapter_01/*` 全量同步）。
+这一节直接“覆盖同步”当天主线目录下所有代码到主线（`主线章节/*` 全量同步）。
 
 Bash：
 
 ```bash
-cp -r examples/from_zero_to_one/chapter_01/* .
 ```
 
 Windows PowerShell：
 
 ```powershell
-Copy-Item -Recurse -Force "examples\from_zero_to_one\chapter_01\*" "."
 ```
 
 ## 跑起来看看
 
-验证本章快照：
+验证主线：
 
 ```bash
-uv run pytest examples/from_zero_to_one/chapter_01/tests/unit/test_bootstrap.py -q
+uv run pytest tests/unit/test_bootstrap.py -q
 ```
 
 验证主线工程：
@@ -242,9 +239,9 @@ uv run agent-forge version
 
 ## 检查清单
 
-1. `chapter_01` 的测试能跑通。
+1. `主线章节` 的测试能跑通。
 2. `agent-forge version` 能执行并输出版本号。
-3. 快照代码和主线代码一致。
+3. 主线代码和主线代码一致。
 
 ## 翻车了怎么办？
 
@@ -276,4 +273,6 @@ uv run agent-forge version
 ## 下一章预告
 
 下一章进入 `Protocol` 组件：统一消息、状态和错误契约，让组件之间真正“说同一种语言”。
+
+
 
