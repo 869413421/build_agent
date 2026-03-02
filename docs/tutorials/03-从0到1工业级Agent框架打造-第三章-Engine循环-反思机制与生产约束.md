@@ -244,10 +244,12 @@ class EngineLoop:
         reflect_fn = reflect_fn or self._default_reflect
         started_at = self._now_ms()
         stats = _RunStats()
+        # 1. 初始化阶段：标准化输入并记录起始状态
         plan_steps = self._normalize_plan_steps(plan_fn(state))
         stats.total_planned_steps = len(plan_steps)
         completed_step_keys = self._completed_step_keys(state)
 
+        # 2. plan 事件落盘：无论成功与否先记录计划
         self._append_event(
             state=state,
             event_type="plan",
@@ -259,9 +261,11 @@ class EngineLoop:
             },
         )
 
+        # 3. 遍历步骤：按顺序执行标准化后的计划步骤
         for idx, step in enumerate(plan_steps, start=1):
             step_id = f"step_{idx}"
 
+            # 3.1 尝试跳过已完成步骤 (resume_skip)
             if step.key in completed_step_keys:
                 stats.skipped_steps += 1
                 self._append_event(
@@ -272,6 +276,7 @@ class EngineLoop:
                 )
                 continue
 
+            # 3.2 检查执行步数是否超限 (max_steps 预算保护)
             stats.executed_steps += 1
             if stats.executed_steps > self.limits.max_steps:
                 stats.stop_reason = "max_steps_reached"
@@ -288,8 +293,10 @@ class EngineLoop:
                 )
                 break
 
+            # 4. 单步执行尝试循环 (attempt loop)
             attempt = 0
             while True:
+                # 4.1 检查系统总时间预算 (防止因无限重试导致全局超时)
                 if self._exceed_time_budget(started_at):
                     stats.stop_reason = "time_budget_exceeded"
                     self._append_event(
@@ -305,6 +312,7 @@ class EngineLoop:
                     )
                     break
 
+                # 4.2 记录 act 开始状态
                 stats.attempt_count += 1
                 self._append_event(
                     state=state,
@@ -313,6 +321,7 @@ class EngineLoop:
                     payload={"phase": "act_start", "step_key": step.key, "step_name": step.name, "attempt": attempt},
                 )
 
+                # 4.3 调用底层执行器并获取执行结果 (act & observe)
                 outcome = await self._act_executor(act_fn, state, step, idx, self.limits.step_timeout_ms)
                 summary, out_hash = self._summarize_output(outcome.output)
                 self._append_event(
@@ -330,6 +339,7 @@ class EngineLoop:
                     },
                 )
 
+                # 4.4 根据结果进行反思判断 (reflect)
                 decision = await self._maybe_await(reflect_fn(state, step, idx, outcome))
                 self._append_event(
                     state=state,
@@ -345,6 +355,8 @@ class EngineLoop:
                     },
                 )
 
+                # 5. 成功提交或失败处理
+                # 5.1 成功提交并落盘 update 事件
                 if outcome.status == "ok" and decision.action == "continue":
                     stats.success_steps += 1
                     self._append_event(
@@ -363,11 +375,13 @@ class EngineLoop:
                     completed_step_keys.add(step.key)
                     break
 
+                # 5.2 触发重试逻辑
                 if decision.action == "retry" and attempt < self.limits.max_retry_per_step:
                     attempt += 1
                     stats.reflected_retry_count += 1
                     continue
 
+                # 5.3 不可恢复的失败，终止当前步骤
                 stats.failed_steps += 1
                 stats.stop_reason = "step_failed"
                 self._append_event(
@@ -386,9 +400,12 @@ class EngineLoop:
                 )
                 break
 
+            
+            # 若由于时间预算超限或步骤崩溃而退出 attempt 循环，将直接跳出主计划循环
             if stats.stop_reason in {"time_budget_exceeded", "step_failed"}:
                 break
 
+        # 6. finish 收尾：整合运行统计信息并产生 FinalAnswer
         self._append_event(
             state=state,
             event_type="finish",
@@ -613,6 +630,7 @@ class EngineLoop:
 
         raw = json.dumps(value, sort_keys=True, ensure_ascii=False)
         return f"step_{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:12]}"
+
 ```
 
 #### 代码讲解（核心设计）
@@ -946,6 +964,7 @@ def test_engine_backpressure_error_when_inflight_exceeded() -> None:
     assert updated.final_answer is not None
     assert updated.final_answer.status == "failed"
     assert any(e.error and e.error.error_code == "ACT_BACKPRESSURE" for e in updated.events if e.event_type == "error")
+
 
 ```
 

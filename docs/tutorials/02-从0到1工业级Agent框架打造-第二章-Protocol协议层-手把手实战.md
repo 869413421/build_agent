@@ -139,7 +139,7 @@ uv sync --dev
 
 ## 第 1 步：创建协议导出入口
 
-创建 `framework/labor_agent/core/protocol/__init__.py`：
+文件：[framework/labor_agent/core/protocol/__init__.py](framework/labor_agent/core/protocol/__init__.py)
 
 ```python
 """Protocol 组件导出。"""
@@ -176,7 +176,7 @@ __all__ = [
 
 ## 第 2 步：创建协议 Schema 主文件
 
-创建 `framework/labor_agent/core/protocol/schemas.py`，写入：
+文件：[framework/labor_agent/core/protocol/schemas.py](framework/labor_agent/core/protocol/schemas.py)
 
 ```python
 """Protocol 组件（框架契约层）。
@@ -299,7 +299,12 @@ class ExecutionEvent(BaseModel):
 
 
 class FinalAnswer(BaseModel):
-    """结构化最终输出（通用版本）。"""
+    """结构化最终输出。
+
+    设计目的：
+    - 保持领域无关，适用于任意 Agent 任务结果。
+    - 让前端展示、评测打分、审计留痕可以直接消费固定字段。
+    """
 
     status: Literal["success", "partial", "failed"] = Field(..., description="任务完成状态")
     summary: str = Field(..., min_length=1, description="结果摘要")
@@ -343,8 +348,7 @@ def build_initial_state(session_id: str) -> AgentState:
     """
 
     return AgentState(session_id=session_id)
-
-```
+````
 
 ---
 
@@ -402,9 +406,11 @@ flowchart TD
 
 ## 第 4 步：写协议层测试
 
-创建 `tests/test_protocol.py`：
+文件：[tests/test_protocol.py](tests/test_protocol.py)
 
 ```python
+"""Protocol 组件测试。"""
+
 from __future__ import annotations
 
 import json
@@ -426,6 +432,8 @@ from labor_agent.core.protocol import (
 
 
 def test_initial_state_contains_required_ids_and_version() -> None:
+    """初始状态应自动带 trace/run/protocol 字段。"""
+
     state = build_initial_state("session_001")
     assert state.session_id == "session_001"
     assert state.trace_id.startswith("trace_")
@@ -434,6 +442,8 @@ def test_initial_state_contains_required_ids_and_version() -> None:
 
 
 def test_protocol_roundtrip_json_serialization() -> None:
+    """协议对象应支持 JSON 序列化与反序列化。"""
+
     message = AgentMessage(role="user", content="公司拖欠工资")
     call = ToolCall(
         tool_call_id="tc_001",
@@ -464,24 +474,33 @@ def test_protocol_roundtrip_json_serialization() -> None:
         events=[event],
         final_answer=final,
     )
+
     raw = state.model_dump_json(ensure_ascii=False)
     data = json.loads(raw)
     loaded = AgentState.model_validate(data)
     assert loaded.session_id == "session_002"
     assert loaded.tool_calls[0].tool_name == "labor_law_search"
     assert loaded.final_answer is not None
+    assert loaded.final_answer.protocol_version == PROTOCOL_VERSION
+    assert loaded.final_answer.status == "success"
 
 
 def test_blank_fields_must_fail_validation() -> None:
+    """空白关键字段必须校验失败。"""
+
     with pytest.raises(ValidationError):
         ToolCall(tool_call_id=" ", tool_name="t", args={}, principal="p")
+
     with pytest.raises(ValidationError):
         AgentState(session_id="   ")
 
 
 def test_error_info_schema() -> None:
+    """错误结构应稳定且带协议版本。"""
+
     err = ErrorInfo(error_code="TOOL_TIMEOUT", error_message="tool timeout", retryable=True)
     assert err.retryable is True
+    assert err.protocol_version == PROTOCOL_VERSION
 ```
 
 为什么这四类测试必须有：
@@ -494,7 +513,7 @@ def test_error_info_schema() -> None:
 
 ## 第 5 步：补充测试导入配置
 
-创建 `tests/conftest.py`：
+文件：[tests/conftest.py](tests/conftest.py)
 
 ```python
 from __future__ import annotations
