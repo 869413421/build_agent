@@ -15,6 +15,7 @@
 ## 环境准备（复制粘贴即可）
 
 ```bash
+uv init
 uv add fastapi typer pydantic pydantic-settings python-dotenv openai
 uv add --dev pytest
 uv sync --dev
