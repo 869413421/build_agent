@@ -106,6 +106,64 @@ flowchart TD
 
 ---
 
+## 创建目录与文件命令（硬标准）
+
+不要一口气全部创建。按下面顺序，走到对应代码步骤时再执行下一条命令。
+
+Bash（分步执行）：
+1. `mkdir -p examples/from_zero_to_one/chapter_03`
+2. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine`
+3. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/application`
+4. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/domain`
+5. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/infrastructure`
+6. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol`
+7. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/application`
+8. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/domain`
+9. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/infrastructure`
+10. `mkdir -p examples/from_zero_to_one/chapter_03/tests`
+11. `mkdir -p examples/from_zero_to_one/chapter_03/tests/unit`
+12. `touch examples/from_zero_to_one/chapter_03/pyproject.toml`
+13. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/__init__.py`
+14. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/application/__init__.py`
+15. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/application/loop.py`
+16. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/domain/__init__.py`
+17. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/infrastructure/__init__.py`
+18. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/__init__.py`
+19. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/application/__init__.py`
+20. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/domain/__init__.py`
+21. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/domain/schemas.py`
+22. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/infrastructure/__init__.py`
+23. `touch examples/from_zero_to_one/chapter_03/tests/conftest.py`
+24. `touch examples/from_zero_to_one/chapter_03/tests/unit/test_engine.py`
+25. `touch examples/from_zero_to_one/chapter_03/tests/unit/test_protocol.py`
+
+Windows PowerShell（分步执行）：
+1. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03" | Out-Null`
+2. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine" | Out-Null`
+3. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\application" | Out-Null`
+4. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\domain" | Out-Null`
+5. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\infrastructure" | Out-Null`
+6. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol" | Out-Null`
+7. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\application" | Out-Null`
+8. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\domain" | Out-Null`
+9. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\infrastructure" | Out-Null`
+10. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\tests" | Out-Null`
+11. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\tests\unit" | Out-Null`
+12. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\pyproject.toml" | Out-Null`
+13. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\__init__.py" | Out-Null`
+14. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\application\__init__.py" | Out-Null`
+15. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\application\loop.py" | Out-Null`
+16. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\domain\__init__.py" | Out-Null`
+17. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\infrastructure\__init__.py" | Out-Null`
+18. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\__init__.py" | Out-Null`
+19. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\application\__init__.py" | Out-Null`
+20. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\domain\__init__.py" | Out-Null`
+21. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\domain\schemas.py" | Out-Null`
+22. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\infrastructure\__init__.py" | Out-Null`
+23. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\tests\conftest.py" | Out-Null`
+24. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\tests\unit\test_engine.py" | Out-Null`
+25. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\tests\unit\test_protocol.py" | Out-Null`
+
 ## 实施步骤
 
 ### 第 1 步：创建目录
@@ -1093,6 +1151,14 @@ uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q
 先执行 `uv add --dev pytest` 和 `uv sync --dev`。
 
 ---
+
+
+
+
+
+
+
+
 
 
 

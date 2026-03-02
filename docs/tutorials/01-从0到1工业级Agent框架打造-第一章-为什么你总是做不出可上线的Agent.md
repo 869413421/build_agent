@@ -1,4 +1,4 @@
-# 《从0到1工业级Agent框架打造》第一章：你的Agent为什么永远停在Demo阶段？
+﻿# 《从0到1工业级Agent框架打造》第一章：你的Agent为什么永远停在Demo阶段？
 
 ## 本章目标
 
@@ -81,6 +81,42 @@ uv sync --dev
 
 - 本章独立快照：`examples/from_zero_to_one/chapter_01/`
 - 主线演进目录：`src/agent_forge/`
+
+## 创建目录与文件命令（硬标准）
+
+不要一口气全部创建。按下面顺序，走到对应代码步骤时再执行下一条命令。
+
+Bash（分步执行）：
+1. `mkdir -p examples/from_zero_to_one/chapter_01`
+2. `mkdir -p examples/from_zero_to_one/chapter_01/src/agent_forge`
+3. `mkdir -p examples/from_zero_to_one/chapter_01/src/agent_forge/apps`
+4. `mkdir -p examples/from_zero_to_one/chapter_01/src/agent_forge/apps/api`
+5. `mkdir -p examples/from_zero_to_one/chapter_01/tests`
+6. `mkdir -p examples/from_zero_to_one/chapter_01/tests/unit`
+7. `touch examples/from_zero_to_one/chapter_01/pyproject.toml`
+8. `touch examples/from_zero_to_one/chapter_01/src/agent_forge/__init__.py`
+9. `touch examples/from_zero_to_one/chapter_01/src/agent_forge/apps/__init__.py`
+10. `touch examples/from_zero_to_one/chapter_01/src/agent_forge/apps/api/__init__.py`
+11. `touch examples/from_zero_to_one/chapter_01/src/agent_forge/apps/api/app.py`
+12. `touch examples/from_zero_to_one/chapter_01/src/agent_forge/apps/cli.py`
+13. `touch examples/from_zero_to_one/chapter_01/tests/conftest.py`
+14. `touch examples/from_zero_to_one/chapter_01/tests/unit/test_bootstrap.py`
+
+Windows PowerShell（分步执行）：
+1. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_01" | Out-Null`
+2. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_01\src\agent_forge" | Out-Null`
+3. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_01\src\agent_forge\apps" | Out-Null`
+4. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_01\src\agent_forge\apps\api" | Out-Null`
+5. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_01\tests" | Out-Null`
+6. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_01\tests\unit" | Out-Null`
+7. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_01\pyproject.toml" | Out-Null`
+8. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_01\src\agent_forge\__init__.py" | Out-Null`
+9. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_01\src\agent_forge\apps\__init__.py" | Out-Null`
+10. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_01\src\agent_forge\apps\api\__init__.py" | Out-Null`
+11. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_01\src\agent_forge\apps\api\app.py" | Out-Null`
+12. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_01\src\agent_forge\apps\cli.py" | Out-Null`
+13. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_01\tests\conftest.py" | Out-Null`
+14. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_01\tests\unit\test_bootstrap.py" | Out-Null`
 
 ## 开干
 
@@ -317,3 +353,11 @@ uv run pytest tests/unit/test_protocol.py -q
 
 - 做什么：实现 `Protocol` 组件，定义消息、状态、事件、错误这套“通用语言”。
 - 为什么重要：第一章让“壳”跑起来，第二章让“芯”定下来。没有统一协议，后面组件只会各说各话。
+
+
+
+
+
+
+
+

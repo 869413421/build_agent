@@ -1,4 +1,4 @@
-# 《从0到1工业级Agent框架打造》第二章：先把“共同语言”焊死，系统才不会边跑边散架
+﻿# 《从0到1工业级Agent框架打造》第二章：先把“共同语言”焊死，系统才不会边跑边散架
 
 ## 本章目标
 
@@ -453,6 +453,36 @@ Copy-Item examples/from_zero_to_one/chapter_02/src/agent_forge/components/protoc
 Copy-Item examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py tests/unit/test_protocol.py -Force
 ```
 
+## 创建目录与文件命令（硬标准）
+
+不要一口气全部创建。按下面顺序，走到对应代码步骤时再执行下一条命令。
+
+Bash（分步执行）：
+1. `mkdir -p examples/from_zero_to_one/chapter_02`
+2. `mkdir -p examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol`
+3. `mkdir -p examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain`
+4. `mkdir -p examples/from_zero_to_one/chapter_02/tests`
+5. `mkdir -p examples/from_zero_to_one/chapter_02/tests/unit`
+6. `touch examples/from_zero_to_one/chapter_02/pyproject.toml`
+7. `touch examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/__init__.py`
+8. `touch examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/__init__.py`
+9. `touch examples/from_zero_to_one/chapter_02/src/agent_forge/components/protocol/domain/schemas.py`
+10. `touch examples/from_zero_to_one/chapter_02/tests/conftest.py`
+11. `touch examples/from_zero_to_one/chapter_02/tests/unit/test_protocol.py`
+
+Windows PowerShell（分步执行）：
+1. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_02" | Out-Null`
+2. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_02\src\agent_forge\components\protocol" | Out-Null`
+3. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_02\src\agent_forge\components\protocol\domain" | Out-Null`
+4. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_02\tests" | Out-Null`
+5. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_02\tests\unit" | Out-Null`
+6. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_02\pyproject.toml" | Out-Null`
+7. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_02\src\agent_forge\components\protocol\__init__.py" | Out-Null`
+8. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_02\src\agent_forge\components\protocol\domain\__init__.py" | Out-Null`
+9. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_02\src\agent_forge\components\protocol\domain\schemas.py" | Out-Null`
+10. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_02\tests\conftest.py" | Out-Null`
+11. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_02\tests\unit\test_protocol.py" | Out-Null`
+
 ## 运行命令
 
 先验证 chapter 快照：
@@ -496,3 +526,11 @@ uv run pytest tests/unit/test_protocol.py -q
 
 1. 第三章进入 Engine 主循环，严格实现：`plan -> act -> observe -> reflect -> update -> finish`。
 2. 你会看到 Protocol 如何被 Engine 实际消费，以及为什么 reflect 不应该被省略。
+
+
+
+
+
+
+
+

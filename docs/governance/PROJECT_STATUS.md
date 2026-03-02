@@ -92,5 +92,15 @@
 7. 已回归验证：`uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q` 通过（11 passed）。
 8. 根据用户反馈，第三章已新增“术语白话卡片”（plan/act/observe/reflect/update/finish 的生活化解释与完整例子），并移除“环境准备与缺包兜底步骤”，降低学习陡峭度。
 9. 教程黄金标准已升级：新增“学习曲线控制标准（术语先白话、先最小可跑再深挖、复杂章节阅读路径）”，并将“环境准备与缺包兜底”调整为按需出现而非每章强制。
+10. 第四章已按新标准重构：新增术语白话卡片、固定“先最小可跑再回归”学习顺序、同步补齐 `chapter_04` 独立快照（model_runtime + support + tests + pyproject + conftest）。
+11. 第四章教程已修正与主线一致的目录与导入路径（`support/config/settings.py`、`support/logging/logger.py`、`model_runtime/infrastructure/adapters/*`），并新增 Bash/PowerShell 主线同步命令。
+12. 验证结果：`tests/unit/test_model_runtime.py` 在主线与 chapter_04 快照均通过（7 passed）；`tests/unit/test_protocol.py + tests/unit/test_engine.py + tests/unit/test_model_runtime.py` 主线回归通过（18 passed）。
+13. 第四章已补齐“通用 config/logging 集成”到代码与教程：`model_runtime` 与 adapters 统一使用 `support/config/settings.py`、`support/logging/logger.py`，并在教程中新增集成说明与边界说明。
+14. 第四章新增 DeepSeek 真实调用打通入口：`src/agent_forge/apps/model_runtime_deepseek_demo.py`（支持 `uv run python -m ...`），并同步到 chapter_04 快照与教程。
+15. 根据用户审阅意见，`DeepSeek` 真实调用不再作为自动化测试用例；改为教程中的“手动线上打通步骤”（`uv run python -m agent_forge.apps.model_runtime_deepseek_demo ...`）并保留 `test_model_runtime.py` 作为自动化回归。
+16. 第四章已重排步骤顺序：先前置 support(config/logging) 集成并给出完整代码讲解，再进入 model_runtime 主干实现，避免读者认知断层。
 
+
+
+17. 教程硬标准已升级为 创建目录+创建文件命令 强约束，并已回补第 01~04 章（Bash + PowerShell 双版本，路径与快照代码一致）。
 

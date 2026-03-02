@@ -1,0 +1,2 @@
+﻿"""Protocol infrastructure layer placeholder."""
+
