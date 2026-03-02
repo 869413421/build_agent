@@ -37,7 +37,7 @@ uv sync --dev
 
 ### 第 2 步：写核心代码
 
-文件：[<relative/path.py>](<relative/path.py>)
+文件：[<relative/path.py>](../../<relative/path.py>)
 
 ```python
 # 完整可运行代码（不要省略关键逻辑）
@@ -50,7 +50,7 @@ uv sync --dev
 
 ### 第 3 步：写测试
 
-文件：[tests/<test_file>.py](tests/<test_file>.py)
+文件：[tests/<test_file>.py](../../tests/<test_file>.py)
 
 ```python
 # 完整可运行测试代码

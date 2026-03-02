@@ -139,7 +139,7 @@ uv sync --dev
 
 ## 第 1 步：创建协议导出入口
 
-文件：[framework/labor_agent/core/protocol/__init__.py](framework/labor_agent/core/protocol/__init__.py)
+文件：[framework/labor_agent/core/protocol/__init__.py](../../framework/labor_agent/core/protocol/__init__.py)
 
 ```python
 """Protocol 组件导出。"""
@@ -176,7 +176,7 @@ __all__ = [
 
 ## 第 2 步：创建协议 Schema 主文件
 
-文件：[framework/labor_agent/core/protocol/schemas.py](framework/labor_agent/core/protocol/schemas.py)
+文件：[framework/labor_agent/core/protocol/schemas.py](../../framework/labor_agent/core/protocol/schemas.py)
 
 ```python
 """Protocol 组件（框架契约层）。
@@ -406,7 +406,7 @@ flowchart TD
 
 ## 第 4 步：写协议层测试
 
-文件：[tests/test_protocol.py](tests/test_protocol.py)
+文件：[tests/test_protocol.py](../../tests/test_protocol.py)
 
 ```python
 """Protocol 组件测试。"""
@@ -513,7 +513,7 @@ def test_error_info_schema() -> None:
 
 ## 第 5 步：补充测试导入配置
 
-文件：[tests/conftest.py](tests/conftest.py)
+文件：[tests/conftest.py](../../tests/conftest.py)
 
 ```python
 from __future__ import annotations

@@ -74,7 +74,7 @@ mkdir -p framework/labor_agent/core/engine
 
 ### 第 2 步：写导出文件
 
-文件：[framework/labor_agent/core/engine/__init__.py](framework/labor_agent/core/engine/__init__.py)
+文件：[framework/labor_agent/core/engine/__init__.py](../../framework/labor_agent/core/engine/__init__.py)
 
 ```python
 """Engine 组件导出。"""
@@ -113,7 +113,7 @@ flowchart TD
 
 ### 第 3 步：写 Engine 主循环（完整代码）
 
-文件：[framework/labor_agent/core/engine/loop.py](framework/labor_agent/core/engine/loop.py)
+文件：[framework/labor_agent/core/engine/loop.py](../../framework/labor_agent/core/engine/loop.py)
 
 ```python
 """Engine(loop) 组件（asyncio 生产导向版）。
@@ -759,7 +759,7 @@ Engine 只定义“执行协议”，不绑定“执行介质”。同一套 Eng
 
 ### 第 4 步：写完整测试（完整代码）
 
-文件：[tests/test_engine.py](tests/test_engine.py)
+文件：[tests/test_engine.py](../../tests/test_engine.py)
 
 ```python
 """Engine(loop) 组件测试（asyncio 生产导向）。"""
