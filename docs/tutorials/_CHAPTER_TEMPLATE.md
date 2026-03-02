@@ -20,6 +20,17 @@ uv add --dev pytest
 uv sync --dev
 ```
 
+## 承接上章（复制快照）
+
+> 本节仅用于第 02 章及以后章节；第 01 章可跳过。
+
+```bash
+cp -r examples/from_zero_to_one/chapter_XX examples/from_zero_to_one/chapter_YY
+```
+
+```powershell
+Copy-Item -Recurse -Force "examples\from_zero_to_one\chapter_XX" "examples\from_zero_to_one\chapter_YY"
+```
 ## 章节快照目录
 
 1. 本章独立快照：`examples/from_zero_to_one/chapter_XX/`

@@ -1,4 +1,4 @@
-﻿# 《从0到1工业级Agent框架打造》第三章：Engine 循环（反思机制与生产约束）
+# 《从0到1工业级Agent框架打造》第三章：Engine 循环（反思机制与生产约束）
 
 本章目标：将 Engine 重构为 `asyncio + 协程` 形态，打通可恢复、可限流、可追踪、可测试的生产导向执行闭环。
 
@@ -19,6 +19,17 @@
 2. 你可以正常运行：`uv run pytest tests/unit/test_protocol.py -q`。
 3. 当前命令执行目录：仓库根目录（包含 `src/`、`tests/`、`docs/`）。
 
+## 承接上章（复制快照）
+
+先把上一章可运行快照完整复制一份，再在新章节目录上增量改造，避免从空目录重复搭建。
+
+`ash
+cp -r examples/from_zero_to_one/chapter_02 examples/from_zero_to_one/chapter_03
+`
+
+`powershell
+Copy-Item -Recurse -Force "examples\\from_zero_to_one\\chapter_02" "examples\\from_zero_to_one\\chapter_03"
+`
 ## 章节快照目录
 
 1. 本章独立快照：`examples/from_zero_to_one/chapter_03/`
@@ -106,64 +117,6 @@ flowchart TD
 
 ---
 
-## 创建目录与文件命令（硬标准）
-
-不要一口气全部创建。按下面顺序，走到对应代码步骤时再执行下一条命令。
-
-Bash（分步执行）：
-1. `mkdir -p examples/from_zero_to_one/chapter_03`
-2. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine`
-3. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/application`
-4. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/domain`
-5. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/infrastructure`
-6. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol`
-7. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/application`
-8. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/domain`
-9. `mkdir -p examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/infrastructure`
-10. `mkdir -p examples/from_zero_to_one/chapter_03/tests`
-11. `mkdir -p examples/from_zero_to_one/chapter_03/tests/unit`
-12. `touch examples/from_zero_to_one/chapter_03/pyproject.toml`
-13. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/__init__.py`
-14. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/application/__init__.py`
-15. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/application/loop.py`
-16. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/domain/__init__.py`
-17. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/engine/infrastructure/__init__.py`
-18. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/__init__.py`
-19. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/application/__init__.py`
-20. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/domain/__init__.py`
-21. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/domain/schemas.py`
-22. `touch examples/from_zero_to_one/chapter_03/src/agent_forge/components/protocol/infrastructure/__init__.py`
-23. `touch examples/from_zero_to_one/chapter_03/tests/conftest.py`
-24. `touch examples/from_zero_to_one/chapter_03/tests/unit/test_engine.py`
-25. `touch examples/from_zero_to_one/chapter_03/tests/unit/test_protocol.py`
-
-Windows PowerShell（分步执行）：
-1. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03" | Out-Null`
-2. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine" | Out-Null`
-3. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\application" | Out-Null`
-4. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\domain" | Out-Null`
-5. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\infrastructure" | Out-Null`
-6. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol" | Out-Null`
-7. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\application" | Out-Null`
-8. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\domain" | Out-Null`
-9. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\infrastructure" | Out-Null`
-10. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\tests" | Out-Null`
-11. `New-Item -ItemType Directory -Force "examples\from_zero_to_one\chapter_03\tests\unit" | Out-Null`
-12. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\pyproject.toml" | Out-Null`
-13. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\__init__.py" | Out-Null`
-14. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\application\__init__.py" | Out-Null`
-15. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\application\loop.py" | Out-Null`
-16. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\domain\__init__.py" | Out-Null`
-17. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\engine\infrastructure\__init__.py" | Out-Null`
-18. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\__init__.py" | Out-Null`
-19. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\application\__init__.py" | Out-Null`
-20. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\domain\__init__.py" | Out-Null`
-21. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\domain\schemas.py" | Out-Null`
-22. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\src\agent_forge\components\protocol\infrastructure\__init__.py" | Out-Null`
-23. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\tests\conftest.py" | Out-Null`
-24. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\tests\unit\test_engine.py" | Out-Null`
-25. `New-Item -ItemType File -Force "examples\from_zero_to_one\chapter_03\tests\unit\test_protocol.py" | Out-Null`
-
 ## 实施步骤
 
 ### 第 1 步：创建目录
@@ -173,6 +126,16 @@ mkdir -p src/agent_forge/components/engine
 ```
 
 ### 第 2 步：写导出文件
+
+创建命令：
+
+```bash
+touch src/agent_forge/components/engine/__init__.py
+```
+
+```powershell
+New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\__init__.py" | Out-Null
+```
 
 文件：[src/agent_forge/components/engine/__init__.py](../../src/agent_forge/components/engine/__init__.py)
 
@@ -213,6 +176,16 @@ flowchart TD
 
 ### 第 3 步：写 Engine 主循环（完整代码）
 
+创建命令：
+
+```bash
+touch src/agent_forge/components/engine/application/loop.py
+```
+
+```powershell
+New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\application\\loop.py" | Out-Null
+```
+
 文件：[src/agent_forge/components/engine/application/loop.py](../../src/agent_forge/components/engine/application/loop.py)
 
 ```python
@@ -241,7 +214,6 @@ from pydantic import BaseModel, Field
 
 from agent_forge.components.protocol import AgentState, ErrorInfo, ExecutionEvent, FinalAnswer
 
-
 class EngineLimits(BaseModel):
     """执行限制。"""
 
@@ -253,7 +225,6 @@ class EngineLimits(BaseModel):
     max_inflight_acts: int = Field(default=32, ge=1, description="同时在途 act 上限（背压）")
     trace_output_preview_chars: int = Field(default=240, ge=32, description="trace 输出预览最大字符数")
 
-
 class StepOutcome(BaseModel):
     """单步执行结果。"""
 
@@ -261,13 +232,11 @@ class StepOutcome(BaseModel):
     output: dict[str, Any] = Field(default_factory=dict, description="步骤输出")
     error: ErrorInfo | None = Field(default=None, description="错误信息")
 
-
 class ReflectDecision(BaseModel):
     """反思决策结果。"""
 
     action: Literal["continue", "retry", "abort"] = Field(..., description="反思动作")
     reason: str = Field(default="", description="决策原因")
-
 
 class RunContext(BaseModel):
     """运行隔离与版本上下文。"""
@@ -279,7 +248,6 @@ class RunContext(BaseModel):
     tool_version: str = Field(default="unset", description="工具版本")
     policy_version: str = Field(default="v1", description="策略版本")
 
-
 class PlanStep(BaseModel):
     """标准化步骤对象。"""
 
@@ -287,14 +255,12 @@ class PlanStep(BaseModel):
     name: str = Field(..., min_length=1, description="步骤名称")
     payload: dict[str, Any] = Field(default_factory=dict, description="步骤扩展数据")
 
-
 PlanFn = Callable[[AgentState], list[str | dict[str, Any] | PlanStep]]
 ActFn = Callable[[AgentState, PlanStep, int], StepOutcome | Awaitable[StepOutcome]]
 ReflectFn = Callable[
     [AgentState, PlanStep, int, StepOutcome], ReflectDecision | Awaitable[ReflectDecision]
 ]
 ActExecutor = Callable[[ActFn, AgentState, PlanStep, int, int], Awaitable[StepOutcome]]
-
 
 @dataclass
 class _RunStats:
@@ -308,7 +274,6 @@ class _RunStats:
     skipped_steps: int = 0
     attempt_count: int = 0
     stop_reason: str = "finished"
-
 
 class EngineLoop:
     """生产导向 Engine 循环实现（asyncio）。"""
@@ -859,6 +824,16 @@ Engine 只定义“执行协议”，不绑定“执行介质”。同一套 Eng
 
 ### 第 4 步：写完整测试（完整代码）
 
+创建命令：
+
+```bash
+touch tests/unit/test_engine.py
+```
+
+```powershell
+New-Item -ItemType File -Force "tests\\unit\\test_engine.py" | Out-Null
+```
+
 文件：[tests/unit/test_engine.py](../../tests/unit/test_engine.py)
 
 ```python
@@ -871,7 +846,6 @@ import time
 
 from agent_forge.components.engine import EngineLimits, EngineLoop, PlanStep, ReflectDecision, RunContext, StepOutcome
 from agent_forge.components.protocol import AgentState, ErrorInfo, ExecutionEvent, build_initial_state
-
 
 def test_engine_run_success_flow() -> None:
     """正常流程应输出 success 并产出 finish 事件。"""
@@ -891,7 +865,6 @@ def test_engine_run_success_flow() -> None:
     assert updated.final_answer.output["success_steps"] == 2
     assert updated.final_answer.output["attempt_count"] == 2
     assert updated.events[-1].event_type == "finish"
-
 
 def test_engine_reflect_retry_once_then_success() -> None:
     """可重试错误应触发 reflect 重试并最终成功。"""
@@ -923,7 +896,6 @@ def test_engine_reflect_retry_once_then_success() -> None:
     assert updated.final_answer.status == "success"
     assert updated.final_answer.output["reflected_retry_count"] == 1
     assert updated.final_answer.output["attempt_count"] == 2
-
 
 def test_engine_resume_uses_stable_step_key_not_idx() -> None:
     """plan 重排后仍应根据 stable step key 跳过已完成步骤。"""
@@ -959,7 +931,6 @@ def test_engine_resume_uses_stable_step_key_not_idx() -> None:
     assert updated.final_answer is not None
     assert updated.final_answer.output["skipped_steps"] == 1
 
-
 def test_engine_max_steps_counts_executed_not_skipped() -> None:
     """max_steps 只统计实际执行步骤，不统计 resume_skip。"""
 
@@ -987,7 +958,6 @@ def test_engine_max_steps_counts_executed_not_skipped() -> None:
     assert updated.final_answer.output["executed_steps"] == 1
     assert updated.final_answer.output["skipped_steps"] == 1
 
-
 def test_engine_step_timeout_via_executor() -> None:
     """单步超时应转换为 STEP_TIMEOUT 错误。"""
 
@@ -1007,7 +977,6 @@ def test_engine_step_timeout_via_executor() -> None:
     assert updated.final_answer is not None
     assert updated.final_answer.status == "failed"
     assert any(e.error and e.error.error_code == "STEP_TIMEOUT" for e in updated.events if e.event_type == "error")
-
 
 def test_engine_context_fields_recorded_in_events() -> None:
     """隔离上下文与版本信息应写入 plan/finish 事件。"""
@@ -1038,7 +1007,6 @@ def test_engine_context_fields_recorded_in_events() -> None:
         for e in updated.events
     )
 
-
 def test_engine_backpressure_error_when_inflight_exceeded() -> None:
     """并发门达到上限时应返回 ACT_BACKPRESSURE。"""
 
@@ -1064,7 +1032,6 @@ def test_engine_backpressure_error_when_inflight_exceeded() -> None:
     assert updated.final_answer is not None
     assert updated.final_answer.status == "failed"
     assert any(e.error and e.error.error_code == "ACT_BACKPRESSURE" for e in updated.events if e.event_type == "error")
-
 
 ```
 
@@ -1151,14 +1118,4 @@ uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q
 先执行 `uv add --dev pytest` 和 `uv sync --dev`。
 
 ---
-
-
-
-
-
-
-
-
-
-
 

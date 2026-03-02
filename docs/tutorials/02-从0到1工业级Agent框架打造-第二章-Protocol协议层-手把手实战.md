@@ -35,6 +35,17 @@ macOS / Linux：
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
+## 承接上章（复制快照）
+
+先把上一章可运行快照完整复制一份，再在新章节目录上增量改造，避免从空目录重复搭建。
+
+`ash
+cp -r examples/from_zero_to_one/chapter_01 examples/from_zero_to_one/chapter_02
+`
+
+`powershell
+Copy-Item -Recurse -Force "examples\\from_zero_to_one\\chapter_01" "examples\\from_zero_to_one\\chapter_02"
+`
 ## 章节快照目录
 
 1. 本章独立快照：`examples/from_zero_to_one/chapter_02/`
