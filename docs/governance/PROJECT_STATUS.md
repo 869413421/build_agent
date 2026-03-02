@@ -48,6 +48,9 @@
 26. Model Runtime 适配器已拆分为独立目录 `src/agent_forge/components/model_runtime/infrastructure/adapters/`，`OpenAIAdapter` 与 `DeepSeekAdapter` 分文件实现。
 27. 框架命名已从 `labor_agent` 切换为 `agent_forge`，分发名/CLI 分别为 `agent-forge` 与 `agent-forge`。
 28. 包布局已迁移到 `src/agent_forge`，并按“组件 + 组件内分层”重构目录。
+29. 教程模板已升级为“环境前置 + 章节快照 + 主线同步”结构，并开始按小步重构第一章。
+30. 第一章文风已升级为“技术博主叙事风格”，强化承上启下与实操链路解释，避免模板化 AI 味。
+31. 教程黄金标准已新增“文风黄金规则”：禁止说明书腔，必须包含真实工程场景、经验表达与承上启下段落。
 
 ## 技术债与偏差
 
@@ -68,6 +71,7 @@
 23. Engine 当前默认执行器使用线程超时返回，底层调用不可中断时可能后台继续，后续可升级为协程/进程隔离执行器。
 24. 新增 `src/agent_forge/support/config` 与 `src/agent_forge/support/logging` 作为辅助模块（不计入 10 组件主干），用于统一配置与日志。
 25. 第四章教程已同步更新为 kwargs 透传与 adapters 目录化架构。
+26. 第一章已重构为“可独立搭建版”，新增 `examples/from_zero_to_one/chapter_01` 可运行快照与验证测试。
 
 ## 下一步唯一任务
 

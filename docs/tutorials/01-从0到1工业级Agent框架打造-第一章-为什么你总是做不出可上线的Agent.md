@@ -1,253 +1,319 @@
-﻿# 《从0到1工业级Agent框架打造》第一章：为什么你的Agent永远走不出Demo阶段
+# 《从0到1工业级Agent框架打造》第一章：你的Agent为什么永远停在Demo阶段？
 
-> 这不是又一个Prompt教程，而是一套完整的工程化实战
+## 本章目标
 
-## 开头：一个再熟悉不过的失败循环
+1. 捅破 Agent 项目从 Demo 到上线之间那层最常见的“窗户纸”。
+2. 搭起一个最小可运行骨架（CLI + API + 测试），这是后面14章的起跑线。
+3. 定个规矩：后面每章，必须有代码、有测试、能验证。咱们不搞“脑补架构”。
 
-**第1天**：你花两小时写了个Prompt，Agent表现得像个专家，团队欢呼“太强了！”
+## 这套课到底会学什么（课程全景）
 
-**第3天**：接上工具和知识库后，它开始答非所问，团队说“再调调参数”
+很多教程的问题是：单章讲得热闹，但你不知道整条路线怎么走。  
+这套课从第一章开始就把地图摊开，避免你学到一半发现方向不对。
 
-**第1周**：线上用户遇到边缘场景，你试图排查，却发现——**根本不知道它当时为什么那么回答**
+14 章的主线分成四段：
 
-**第2周**：项目复盘会上，所有人达成共识：“Agent还不成熟，不适合生产。”
+1. 打地基（第 1-4 章）：骨架、协议、执行引擎、模型运行时。  
+2. 长能力（第 5-8 章）：工具运行时、可观测、上下文工程、检索。  
+3. 稳系统（第 9-11 章）：记忆、评测、安全层。  
+4. 可交付（第 12-14 章）：API/CLI 集成、部署与质量门禁。
 
-这个场景，是不是似曾相识？
+你可以把它理解成一条固定节奏：  
+先把系统“跑起来”，再让系统“做得对”，最后让系统“敢上线”。
 
-我见过至少20个团队，在同样的坑里摔倒。他们不缺技术热情，不缺资源投入，甚至不缺模型能力。
+## 学完后你能拿到什么（阶段展望）
 
-缺的只是一个东西：**把Agent当系统来建的工程思维。**
+这不是“看完很懂，开工还不会”的那种课程。  
+按章节跟下来，你会拿到三层可交付产物：
 
----
+1. 工程层：一套可运行、可测试、可扩展的 `agent_forge` 框架骨架。  
+2. 架构层：从 Protocol 到 Safety 的完整组件链路与边界约束。  
+3. 交付层：可演示、可回归、可持续迭代的项目工程（不是一次性 Demo）。
 
-## 01 这不是“玩模型”的教程，这是“做系统”的实战
+换句话说，最后你交出去的不是“一个聪明回答”，而是一套“可维护系统”。
 
-如果你期待的是“10个Prompt让Agent变聪明”，现在可以合上这篇文章。
+## 你适不适合这套课（先判断，再投入）
 
-这套教程的目标只有一个：
+适合你，如果你满足下面任意两条：
 
-**从0到1，手把手搭建一个工业级Agent框架，并用它落地一个真实的“劳动纠纷处理指导Agent”。**
+1. 做过后端或平台开发，想把 Agent 做成“可上线系统”，不是一次性 Demo。
+2. 遇到过“Demo 很惊艳、线上难排查”的问题，想补齐工程基本盘。
+3. 希望沉淀一套可复用框架，而不是只完成一个项目。
 
-当你跟完整个系列，你会得到：
+不太适合你，如果你当前目标是：
 
-✅ **一套可扩展的框架结构**——不是“这个项目能用”，而是“下一个项目也能用”  
-✅ **一条可观测、可评测的执行链路**——出了问题，你知道从哪看、怎么修  
-✅ **一个能拿得出手的实战案例**——劳动纠纷处理Agent，有业务价值，有法律边界，有落地场景
+1. 只想快速出一个演示，不关心长期维护。
+2. 只关心 Prompt 结果，不打算做测试、回归和版本治理。
+3. 不接受“先打地基、后堆能力”的学习节奏。
 
----
+## 学这套课需要哪些知识点
 
-## 02 扒开真相：为什么90%的Agent项目烂尾？
+必备：
 
-我复盘过十几个失败的Agent项目，它们的死法惊人一致：
+1. Python 基础：函数、模块、包导入、虚拟环境。
+2. 命令行基础：能执行 `uv`、`pytest`、基本文件操作。
+3. Web 基础：理解 HTTP 路由与 JSON 返回。
 
-**第一层：工程顺序错误**
-- 先写业务逻辑，后想框架抽象
-- 先追求“回答像人”，后补可观测性
-- 等到想加评测时，代码已经乱到不敢动
+加分项（不会也能跟）：
 
-**第二层：系统设计缺失**
-- 工具调用没有协议化，重试一次，订单重复扣款
-- 错误处理靠字符串匹配，“抱歉我遇到一个问题”吞掉所有异常
-- 状态管理靠全局变量，并发请求一来，记忆串台
+1. `asyncio` 基础认知。
+2. `typing` 与 `pydantic` 基础用法。
+3. 对测试、lint、发布流程有基本概念。
 
-**第三层：维护成本失控**
-- 半年后，新人不敢改代码
-- 一年后，老团队不敢动逻辑
-- 最后结论：重构不如重写，重写不如放弃
+如果你现在只具备“必备项”，可以直接开学。  
+因为本系列每章都坚持：完整代码 + 可运行命令 + 可验证结果。
 
-你会发现，这些都不是“模型不够聪明”的问题。
+## 动手之前
 
-它们是**软件工程问题**。
+1. Python 版本 >= 3.11
+2. 装好 `uv`
+3. 所有命令都在仓库根目录 `D:\code\build_agent` 下执行
 
----
+## 环境准备（复制粘贴即可）
 
-## 03 这套系列怎么破局：10个组件的铁序
-
-我们定义了一个固定的组件顺序——**不扩项，不跳步，不讲故事**：
-
+```bash
+uv add fastapi typer pydantic pydantic-settings python-dotenv openai
+uv add --dev pytest
+uv sync --dev
 ```
-1. Protocol（协议层）
-2. Engine（执行引擎）
-3. Model Runtime（模型运行时）
-4. Tool Runtime（工具运行时）
-5. Observability（可观测性）
-6. Context Engineering（上下文工程）
-7. Retrieval（检索）
-8. Memory（记忆）
-9. Evaluator（评测）
-10. Safety Layer（安全层）
-```
 
-这个顺序不是拍脑袋定的，它遵循一个铁律：
+## 代码放在哪
 
-**先让系统能跑，再让系统会做，最后让系统敢上线。**
+- 本章独立快照：`examples/from_zero_to_one/chapter_01/`
+- 主线演进目录：`src/agent_forge/`
 
-- 先统一协议 → 避免后面各层各玩各的
-- 再跑通闭环 → 哪怕只有Hello World，也要能稳定执行
-- 然后接模型和工具 → 让它能真正做事
-- 再补可观测和上下文 → 让它能被优化
-- 最后上评测和安全 → 让它能对用户负责
+## 开干
 
-每一步，都是上一轮的“验收标准”，也是下一轮的“地基”。
+### 第 1 步：先聊点实际的
 
----
+做过 Agent 的，下面这场景熟不熟？
 
-## 03.1 先讲“面”：从0到1的主流程到底怎么跑
+- 第 1 天：调了两句 Prompt，效果惊艳，感觉马上要起飞。
+- 第 7 天：接上工具、状态和接口，开始时不时抽风一下。
+- 第 30 天：问题在哪都搞不清楚，团队里开始有人嘀咕“要不重写吧”。
 
-很多教程一上来就讲“某个技巧”，读者会知道一个点，但不知道它在系统里的位置。  
-我们这套系列固定先讲全局链路，再讲局部实现。
+真不是模型不行，是工程的底子没打好。
+
+所以第一章，我们不谈什么花哨的“高级能力”，就干一件事：把最小可运行骨架立起来，并且能让测试放心地说一句“这玩意能跑”。
 
 ```mermaid
-flowchart LR
-  A[Protocol] --> B[Engine]
-  B --> C[Model Runtime]
-  B --> D[Tool Runtime]
-  B --> E[Observability]
-  B --> F[Context Engineering]
-  F --> G[Retrieval]
-  F --> H[Memory]
-  E --> I[Evaluator]
-  C --> J[Safety Layer]
-  D --> J
-  F --> J
+flowchart TD
+  A[创建 chapter_01 工程骨架] --> B[补齐 CLI 与 API 最小入口]
+  B --> C[写 bootstrap 单测]
+  C --> D[运行 pytest 验证]
+  D --> E[同步到主线 src/agent_forge]
 ```
 
-这张图表达的不是“依赖图漂亮”，而是工程顺序：  
-1. 先把数据契约统一（Protocol）  
-2. 再跑通执行闭环（Engine）  
-3. 然后接模型/工具，让系统能真实完成任务  
-4. 最后补观测、评测、安全，让系统可持续上线
+这张图就是后面14章的基本操作：  
+先搭结构，再填能力；先能验证，再谈优化。
 
----
+### 第 2 步：创建目录和文件
 
-## 03.2 再讲“点”：为什么这个顺序不能反过来
+```bash
+mkdir -p examples/from_zero_to_one/chapter_01/src/agent_forge/apps/api
+mkdir -p examples/from_zero_to_one/chapter_01/tests/unit
+```
 
-1. 先做业务 Agent 再抽协议：会导致字段到处漂移，后期改一处炸全链路。  
-2. 先做评测再做观测：会出现“想评却没数据”的死局。  
-3. 先堆记忆检索再跑闭环：你会得到“能力很多但不可控”的系统。  
+Windows PowerShell：
 
-这就是我们反复强调的原则：  
-先有“可执行、可追踪”的主流程，再谈“更聪明”的能力增强。
+```powershell
+New-Item -ItemType Directory -Force examples/from_zero_to_one/chapter_01/src/agent_forge/apps/api | Out-Null
+New-Item -ItemType Directory -Force examples/from_zero_to_one/chapter_01/tests/unit | Out-Null
+```
 
----
+这步没啥技术含量，但有个细节值得说一句：从第一天就把 `tests` 和 `src` 并列建好。这不是形式主义，我见过太多项目，到后期想补测试的时候，发现连个放测试文件的地方都要吵半天。
 
-## 04 你适合跟这套教程吗？
+### 第 3 步：写核心代码（可以直接跑的版本）
 
-**适合你，如果：**
+文件：[examples/from_zero_to_one/chapter_01/pyproject.toml](../../examples/from_zero_to_one/chapter_01/pyproject.toml)
 
-✅ 你有后端开发经验，想把Agent做成能上线的工程  
-✅ 你正在做AI项目，但卡在“Demo很牛，上线就崩”的阶段  
-✅ 你需要一套可复用的框架，而不是一次性项目代码  
+```toml
+[project]
+name = "agent-forge-chapter-01"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "typer>=0.12.0",
+  "pytest>=8.3.0",  # 直接把 pytest 塞进依赖，省得跑测试时还要现装
+]
 
-**不适合你，如果：**
+[project.scripts]
+agent-forge = "agent_forge.apps.cli:app"
+```
 
-❌ 你只想要几段Prompt，快速拼个演示  
-❌ 你不关心代码能不能维护、问题能不能排查  
-❌ 你觉得“工程化”就是加几个try-catch
+说两个让我吃过亏的地方：
 
----
+一是把 `pytest` 放进了 `dependencies` 而不是 dev 依赖。这样做有点“政治不正确”，但第一章读者很多还没建立 dev 依赖的心智模型，我不想让他们第一步就卡在缺包报错。后面章节稳定了，再挪回去也不迟。
 
-## 05 这套教程的交付纪律（你可以直接抄去做团队规范）
+二是 `[project.scripts]` 这个配置。我第一次写 `pyproject.toml` 时在这里拼错过路径，结果命令装上了但跑不起来，白白 debug 半小时。这里建议直接复制，不要手打。
 
-每一章的交付，都必须满足三个条件：
+文件：[examples/from_zero_to_one/chapter_01/src/agent_forge/apps/cli.py](../../examples/from_zero_to_one/chapter_01/src/agent_forge/apps/cli.py)
 
-📦 **交付代码**——可运行，可复用，可扩展  
-🧪 **交付测试**——单测+集成测，覆盖核心链路  
-📘 **交付教程**——讲清楚“为什么这么设计”，不只给“怎么用”
+```python
+"""CLI entry for chapter 01."""
 
-这不是形式主义。
+from __future__ import annotations
 
-这是避免“半年后没人敢动这套代码”的唯一方法。
+import typer
 
----
-
-## 06 我们要落地的业务场景：劳动纠纷处理指导Agent
-
-我们不做一个“什么都能聊”的聊天机器人。
-
-我们要做一个**真正有用的辅助系统**：
-
-**输入**：用户描述劳动纠纷场景（如“公司拖欠三个月工资，没合同”）  
-**输出**：
-
-1. 处理路径建议（协商→投诉→仲裁→诉讼）  
-2. 证据清单（需要收集什么、怎么收集）  
-3. 文书草稿（仲裁申请书要点、协商话术）
-
-并且，从第一天起就明确法律边界：
-
-> ⚖️ 提供法律信息辅助，不构成正式法律意见  
-> ⚖️ 明确告知用户：重要决策请咨询专业律师
-
-这不是免责声明，这是对用户负责。
-
----
-
-## 07 第一阶段你能拿到的两个里程碑
-
-跟完前几章，你不会只拿到一堆代码碎片。
-
-你会拿到：
-
-**里程碑一：第一个可追踪的执行闭环**
-
-不是“模型输出一段文本就结束”，而是：
-- 每一次执行都有唯一ID
-- 每一步调用都有日志
-- 每一条链路都可复现
-
-**里程碑二：第一个可自动验证的协议与测试体系**
-
-不是“手动点几个Case觉得还行”，而是：
-- 协议层统一约束
-- 核心逻辑有自动化验证
-- 改代码敢跑测试，跑测试敢上线
-
-这两个里程碑一旦建立，后续的“加工具、接知识库、上记忆”就不再是“堆代码”，而是“可控迭代”。
-
----
-
-## 08 给读者的行动建议（今天就做）
-
-如果你想跟着这个系列真正拿到结果，今天先完成三件事：
-
-1️⃣ **明确你的Agent场景边界**
-- 做什么（劳动纠纷处理）
-- 不做什么（不是法律咨询，不是情感聊天）
-- 越具体，后面越不迷茫
-
-2️⃣ **接受“先框架后业务”的节奏**
-- 前几章可能看不到“智能”，只能看到“结构”
-- 但请相信：**结构对了，智能才有落脚点**
-
-3️⃣ **建一份学习记录**
-- 每章写下三件事：
-  - 输入（我理解了哪些设计）
-  - 取舍（为什么这么选，不这么选）
-  - 验证（怎么证明它是对的）
-  - 遗留（还有哪些问题没解决）
-
----
-
-## 09 下一章预告：从“想法”到“代码”的分水岭
-
-下一章我们正式进入工程落地：
-
-**《第二章：搭建仓库工程骨架——让每一行代码都长对地方》**
-
-- 怎么设计目录结构，让十年后的人还能看懂
-- 怎么定代码规范，让协作不再是灾难
-- 怎么搭CI/CD，让测试自动守护质量
-
-如果你之前做Agent总是“做着做着就乱了”，这一章会是你的分水岭。
-
----
-
-**P.S.** 这不是一本“书”，这是一次“实战直播”。
-
-我会按章节持续更新，每一章都有代码、有测试、有教程。
-
-如果你身边也有被“Agent上线难”困扰的朋友，欢迎转发给他——我们一起，把Agent从“Demo玩具”做成“生产系统”。
+app = typer.Typer(help="agent_forge chapter 01 CLI")
 
 
+@app.command()
+def version() -> None:
+    """Print chapter bootstrap version."""
 
+    typer.echo("agent-forge-chapter-01")
+
+
+if __name__ == "__main__":
+    app()
+```
+
+这个文件现在看着有点傻，就一个 `version` 命令。但我想表达的是：CLI 是工程的“门面”，门面可以简陋，但不能没有。有了这个入口，后面加命令就是加函数的事，不用再折腾一遍基础设施。
+
+有个容易踩的坑：如果你把 `version` 函数签名改成带参数、但调用时没传参，CLI 会直接报错。CLI 框架对函数签名很敏感，这是好事，越早崩溃的问题越好修。
+
+文件：[examples/from_zero_to_one/chapter_01/src/agent_forge/apps/api/app.py](../../examples/from_zero_to_one/chapter_01/src/agent_forge/apps/api/app.py)
+
+```python
+"""FastAPI app for chapter 01."""
+
+from fastapi import FastAPI
+
+app = FastAPI(title="agent_forge_chapter_01")
+
+
+@app.get("/v1/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+```
+
+健康检查接口，看起来也傻傻的，永远返回 `{"status": "ok"}`。但我故意这么写：第一版健康检查就应该“傻”。如果你在第一章就开始纠结“要不要检查数据库连接”“要不要检查缓存状态”，这个接口一个月都上不去。
+
+后面我们会在它上面叠加逻辑，但现在任务只有一个：证明服务能启动，路由能访问。
+
+### 第 4 步：写测试（也是可以直接跑的版本）
+
+文件：[examples/from_zero_to_one/chapter_01/tests/conftest.py](../../examples/from_zero_to_one/chapter_01/tests/conftest.py)
+
+```python
+"""Test bootstrap for chapter 01 snapshot."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+```
+
+这个文件就干了一件事：把 `src` 目录塞进 Python 的模块搜索路径。
+
+为什么需要它？因为我们的目录结构是 `examples/chapter_01/src/...`。不在 `conftest.py` 里加这段，`pytest` 运行时根本找不到 `agent_forge`。
+
+你可以把它理解为“测试环境胶水代码”。删掉它，测试基本都会报导入错误，就这么直接。
+
+文件：[examples/from_zero_to_one/chapter_01/tests/unit/test_bootstrap.py](../../examples/from_zero_to_one/chapter_01/tests/unit/test_bootstrap.py)
+
+```python
+"""Chapter 01 bootstrap tests."""
+
+from __future__ import annotations
+
+from agent_forge.apps.api.app import health
+
+
+def test_health_endpoint_function() -> None:
+    assert health() == {"status": "ok"}
+```
+
+这是我们的第一条测试，验证 API 健康函数能调用、返回值符合预期。
+
+你可能觉得它很简单。但第一条测试的意义不在“测得多复杂”，而在建立“可以被测试”的习惯。一旦这个习惯建立起来，后面每章都能自然接上。
+
+### 第 5 步：同步到主线（chapter_01 -> src）
+
+快照和主线为什么要分开？因为教学代码和交付代码目标不完全一样：
+
+- 章节快照放 `examples/`：注释更全、节奏更慢、利于学习。
+- 主线工程放 `src/`：结构更稳、便于持续演进和交付。
+
+同步方式：
+
+1. 同步 CLI：把 `examples/.../apps/cli.py` 的改动同步到 [src/agent_forge/apps/cli.py](../../src/agent_forge/apps/cli.py)
+2. 同步 API：把 `examples/.../apps/api/app.py` 的改动同步到 [src/agent_forge/apps/api/app.py](../../src/agent_forge/apps/api/app.py)
+3. 检查主线 [pyproject.toml](../../pyproject.toml) 的 `[project.scripts]` 路径是否正确
+
+Unix/macOS 复制命令示例：
+
+```bash
+cp examples/from_zero_to_one/chapter_01/src/agent_forge/apps/cli.py src/agent_forge/apps/cli.py
+cp examples/from_zero_to_one/chapter_01/src/agent_forge/apps/api/app.py src/agent_forge/apps/api/app.py
+```
+
+Windows PowerShell 复制命令示例：
+
+```powershell
+Copy-Item examples/from_zero_to_one/chapter_01/src/agent_forge/apps/cli.py src/agent_forge/apps/cli.py -Force
+Copy-Item examples/from_zero_to_one/chapter_01/src/agent_forge/apps/api/app.py src/agent_forge/apps/api/app.py -Force
+```
+
+## 跑起来看看
+
+验证本章快照：
+
+```bash
+uv run pytest examples/from_zero_to_one/chapter_01/tests/unit/test_bootstrap.py -q
+```
+
+正常输出应该是一个绿点：`.`
+
+验证主线工程：
+
+```bash
+uv run agent-forge version
+# 输出: agent-forge 0.1.0
+
+uv run pytest tests/unit/test_protocol.py -q
+# 输出: 4 passed
+```
+
+## 检查清单
+
+1. `chapter_01` 的测试能跑通，输出绿点。
+2. `agent-forge version` 能执行并输出版本号。
+3. 本章提到的文件链接都能跳到真实文件。
+4. 快照代码和主线代码保持一致。
+
+## 翻车了怎么办？
+
+翻车现场 1：`ModuleNotFoundError: No module named 'agent_forge'`  
+大概率是 `conftest.py` 路径注入没生效。检查：
+
+1. 文件是否在 `examples/from_zero_to_one/chapter_01/tests/conftest.py`
+2. `SRC = ROOT / "src"` 是否被改坏
+
+翻车现场 2：`agent-forge: command not found`  
+说明脚本入口没正确安装。处理方式：
+
+1. 确认 `pyproject.toml` 的 `[project.scripts]` 配置
+2. 使用 `uv run agent-forge version` 直接执行，避免环境路径问题
+
+翻车现场 3：CLI 执行时报函数签名错误  
+说明命令参数和函数签名不一致。第一章 `version` 命令不带参数，别额外传参。
+
+## 本章完成标志（DoD）
+
+1. 任何人都能从空目录搭出第一版可运行骨架。
+2. 能跑通第一条自动化测试和第一条 CLI 命令。
+3. 主线与章节快照已经建立同步机制，可以进入下一章迭代。
+
+## 下一章预告
+
+- 做什么：实现 `Protocol` 组件，定义消息、状态、事件、错误这套“通用语言”。
+- 为什么重要：第一章让“壳”跑起来，第二章让“芯”定下来。没有统一协议，后面组件只会各说各话。
