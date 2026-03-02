@@ -1,15 +1,15 @@
-# 项目状态（交接单一事实源）
+﻿# 项目状态（交接单一事实源）
 
 ## 当前阶段
 
-- 阶段：Engine（loop）已升级为生产导向版本，等待审核
-- 日期：2026-03-01
+- 阶段：仓库结构重构完成（`agent_forge` 命名、`src/` 布局、组件分层落地）
+- 日期：2026-03-02
 
 ## 已完成组件
 
 - [x] Protocol
-- [ ] Engine（loop）
-- [ ] Model Runtime（LLM Adapter）
+- [x] Engine（loop）
+- [x] Model Runtime（LLM Adapter）
 - [ ] Tool Runtime（API Adapter）
 - [ ] Observability
 - [ ] Context Engineering
@@ -20,16 +20,16 @@
 
 ## 进行中组件（唯一）
 
-- Engine（loop）（已完成待审核）
+- Tool Runtime（API Adapter）（初始化中）
 
 ## 已通过审核的小步
 
 1. 规则文件中文化与小步约束落地（`docs/governance/NORTH_STAR.md`、`docs/governance/AI_TASK_GUARDRAILS.md`、`AGENTS.md`）
 2. 教程目录骨架创建（`docs/tutorials/01..14`）
-3. Protocol 组件完成并升级教程质量（`framework/labor_agent/protocol.py`、`tests/test_protocol.py`、`docs/tutorials/09-智能体通信协议.md`）
-4. Protocol 代码结构工程化重构（迁移到 `framework/labor_agent/core/protocol/`）并新增系列第一章总览教程
+3. Protocol 组件完成并升级教程质量（`src/agent_forge/components/protocol/`、`tests/unit/test_protocol.py`）
+4. Protocol 代码结构工程化重构（迁移到 `src/agent_forge/components/protocol/`）并新增系列第一章总览教程
 5. 系列第二章 Protocol 教程完成（读者向发布文风，未引入 Engine 实现）
-6. Engine（loop）组件实现完成（`framework/labor_agent/core/engine/loop.py`、`tests/test_engine.py`、第三章教程）
+6. Engine（loop）组件实现完成（`src/agent_forge/components/engine/application/loop.py`、`tests/unit/test_engine.py`、第三章教程）
 7. Engine 升级：加入 reflect 机制、恢复一致性、隔离上下文与性能指标输出
 8. Engine 关键修复：stable step key、executed_steps 计数、retry 内 run budget 检查、act_executor 超时执行语义
 9. Engine 性能语义增强：共享线程池复用、并发背压、attempt_count 指标、trace 输出摘要化
@@ -43,6 +43,11 @@
 17. 已新增教程结构硬约束：“先讲面（主流程）再讲点（关键实现）”，并同步到规则文件。
 18. 第一、二、三章已按“先面后点”统一重写关键段落，保证系列风格一致。
 19. 第三章讲解深度升级为“主流程时间线 + 关键函数解剖 + 状态机视角 + 预算语义深挖 + 评审清单”。
+24. Engine（loop）已完成并保持完成态；当前仅对 Model Runtime 做增量优化，不回退 Engine 组件状态。
+25. Model Runtime 已按评审意见重构为 `ModelRequest(..., **kwargs)` 动态参数透传，并支持 `runtime.generate(..., **kwargs)` 覆盖。
+26. Model Runtime 适配器已拆分为独立目录 `src/agent_forge/components/model_runtime/infrastructure/adapters/`，`OpenAIAdapter` 与 `DeepSeekAdapter` 分文件实现。
+27. 框架命名已从 `labor_agent` 切换为 `agent_forge`，分发名/CLI 分别为 `agent-forge` 与 `agent-forge`。
+28. 包布局已迁移到 `src/agent_forge`，并按“组件 + 组件内分层”重构目录。
 
 ## 技术债与偏差
 
@@ -61,11 +66,15 @@
 21. 已将“生产可用 + 可扩展性 + Engine 反思链路”升级为硬约束。
 22. 已按生产级标准加严 10 组件 DoD（并发隔离、版本治理、熔断限流、脱敏、回放一致性、发布门禁）。
 23. Engine 当前默认执行器使用线程超时返回，底层调用不可中断时可能后台继续，后续可升级为协程/进程隔离执行器。
+24. 新增 `src/agent_forge/support/config` 与 `src/agent_forge/support/logging` 作为辅助模块（不计入 10 组件主干），用于统一配置与日志。
+25. 第四章教程已同步更新为 kwargs 透传与 adapters 目录化架构。
 
 ## 下一步唯一任务
 
-- 若本步审核通过，进入 Model Runtime（LLM Adapter）组件实现与第四章教程（含降级与版本追踪）。
+- 若本步审核通过，进入 Tool Runtime（API Adapter）组件实现与第五章教程。
 
 ## 阻塞项
 
 - 无
+
+

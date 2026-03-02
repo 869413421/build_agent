@@ -1,4 +1,4 @@
-# 框架核心接口约束
+﻿# 框架核心接口约束
 
 本文档固定框架接口，避免后续会话漂移。
 
@@ -6,7 +6,7 @@
 
 1. `Framework.run(task_input, session_id) -> FrameworkResult`
 2. `Engine.loop(state, limits) -> AgentState`
-3. `ModelRuntime.generate(model_request) -> ModelResult`
+3. `ModelRuntime.generate(model_request, **kwargs) -> ModelResponse`
 4. `ToolRuntime.execute(tool_call, principal) -> ToolResult`
 5. `ContextBuilder.build(state, budget) -> ContextBundle`
 6. `Evaluator.score(run_record) -> EvalReport`
@@ -21,7 +21,7 @@
 6. `ToolCall`
 7. `ToolResult`
 8. `ModelRequest`
-9. `ModelResult`
+9. `ModelResponse`
 10. `ExecutionEvent`
 11. `FrameworkResult`
 12. `EvalReport`
@@ -46,4 +46,5 @@
 1. 任一接口签名变更，必须同步更新本文档与测试。
 2. 任一新增类型必须补用途、字段、示例。
 3. 禁止 API 层绕过框架层直接写业务逻辑。
+
 

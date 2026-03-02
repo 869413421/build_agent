@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "labor-dispute-agent"
+name = "agent-forge"
 version = "0.1.0"
-description = "Engineering-grade labor dispute guidance agent reference implementation"
+description = "Engineering-grade reusable agent framework"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -13,6 +13,9 @@ dependencies = [
   "uvicorn>=0.30.0",
   "pydantic>=2.9.0",
   "typer>=0.12.0",
+  "openai>=2.24.0",
+  "pydantic-settings>=2.13.1",
+  "python-dotenv>=1.1.1",
 ]
 
 [project.optional-dependencies]
@@ -22,19 +25,18 @@ dev = [
 ]
 
 [project.scripts]
-labor-agent = "labor_agent.cli:app"
+agent-forge = "agent_forge.apps.cli:app"
 
 [tool.setuptools]
-package-dir = {"" = "framework"}
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-where = ["framework"]
+where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/unit", "tests/integration", "tests/e2e"]
 
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
 ]
-

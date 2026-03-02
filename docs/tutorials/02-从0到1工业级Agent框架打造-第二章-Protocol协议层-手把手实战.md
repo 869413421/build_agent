@@ -1,4 +1,4 @@
-# 《从0到1工业级Agent框架打造》第二章：Protocol 协议层（手把手实战 + 原理图解）
+﻿# 《从0到1工业级Agent框架打造》第二章：Protocol 协议层（手把手实战 + 原理图解）
 
 这一章你不仅会“照着抄能跑”，还会知道“为什么要这么写”。  
 目标是把协议层做成后续所有组件都能依赖的稳定地基。
@@ -73,14 +73,14 @@ flowchart TD
 在仓库根目录执行：
 
 ```bash
-mkdir -p framework/labor_agent/core/protocol
+mkdir -p src/agent_forge/components/protocol
 mkdir -p tests
 ```
 
 Windows PowerShell：
 
 ```powershell
-New-Item -ItemType Directory -Force framework/labor_agent/core/protocol | Out-Null
+New-Item -ItemType Directory -Force src/agent_forge/components/protocol | Out-Null
 New-Item -ItemType Directory -Force tests | Out-Null
 ```
 
@@ -120,7 +120,7 @@ uv add --dev pytest
 如果你在 IDE 里看到下面这段 import 飘红：
 
 ```python
-from labor_agent.core.protocol import ...
+from agent_forge.components.protocol import ...
 ```
 
 按下面两步处理：
@@ -131,7 +131,7 @@ from labor_agent.core.protocol import ...
 uv sync --dev
 ```
 
-2. 把 `framework/` 设为源码根目录（Source Root）  
+2. 把 `src/` 设为源码根目录（Source Root）  
    - PyCharm：右键 `framework` -> `Mark Directory as` -> `Sources Root`  
    - VS Code/Pylance：项目已提供 `pyrightconfig.json`，重启语言服务即可
 
@@ -139,7 +139,7 @@ uv sync --dev
 
 ## 第 1 步：创建协议导出入口
 
-文件：[framework/labor_agent/core/protocol/__init__.py](../../framework/labor_agent/core/protocol/__init__.py)
+文件：[src/agent_forge/components/protocol/__init__.py](../../src/agent_forge/components/protocol/__init__.py)
 
 ```python
 """Protocol 组件导出。"""
@@ -176,7 +176,7 @@ __all__ = [
 
 ## 第 2 步：创建协议 Schema 主文件
 
-文件：[framework/labor_agent/core/protocol/schemas.py](../../framework/labor_agent/core/protocol/schemas.py)
+文件：[src/agent_forge/components/protocol/schemas.py](../../src/agent_forge/components/protocol/schemas.py)
 
 ```python
 """Protocol 组件（框架契约层）。
@@ -406,7 +406,7 @@ flowchart TD
 
 ## 第 4 步：写协议层测试
 
-文件：[tests/test_protocol.py](../../tests/test_protocol.py)
+文件：[tests/unit/test_protocol.py](../../tests/unit/test_protocol.py)
 
 ```python
 """Protocol 组件测试。"""
@@ -418,7 +418,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from labor_agent.core.protocol import (
+from agent_forge.components.protocol import (
     PROTOCOL_VERSION,
     AgentMessage,
     AgentState,
@@ -535,7 +535,7 @@ if str(FRAMEWORK_DIR) not in sys.path:
 ## 第 6 步：运行与验证
 
 ```bash
-uv run pytest tests/test_protocol.py
+uv run pytest tests/unit/test_protocol.py
 ```
 
 ---
@@ -570,3 +570,7 @@ flowchart TD
 
 第三章进入 Engine（loop），但不会新定义协议字段。  
 Engine 只做一件事：消费本章协议，跑通 `plan -> act -> observe -> update -> finish`。
+
+
+
+

@@ -69,12 +69,12 @@ flowchart TD
 ### 第 1 步：创建目录
 
 ```bash
-mkdir -p framework/labor_agent/core/engine
+mkdir -p src/agent_forge/components/engine
 ```
 
 ### 第 2 步：写导出文件
 
-文件：[framework/labor_agent/core/engine/__init__.py](../../framework/labor_agent/core/engine/__init__.py)
+文件：[src/agent_forge/components/engine/__init__.py](../../src/agent_forge/components/engine/__init__.py)
 
 ```python
 """Engine 组件导出。"""
@@ -113,7 +113,7 @@ flowchart TD
 
 ### 第 3 步：写 Engine 主循环（完整代码）
 
-文件：[framework/labor_agent/core/engine/loop.py](../../framework/labor_agent/core/engine/loop.py)
+文件：[src/agent_forge/components/engine/application/loop.py](../../src/agent_forge/components/engine/application/loop.py)
 
 ```python
 """Engine(loop) 组件（asyncio 生产导向版）。
@@ -139,7 +139,7 @@ from typing import Any, Awaitable, Callable, Literal
 
 from pydantic import BaseModel, Field
 
-from labor_agent.core.protocol import AgentState, ErrorInfo, ExecutionEvent, FinalAnswer
+from agent_forge.components.protocol import AgentState, ErrorInfo, ExecutionEvent, FinalAnswer
 
 
 class EngineLimits(BaseModel):
@@ -759,7 +759,7 @@ Engine 只定义“执行协议”，不绑定“执行介质”。同一套 Eng
 
 ### 第 4 步：写完整测试（完整代码）
 
-文件：[tests/test_engine.py](../../tests/test_engine.py)
+文件：[tests/unit/test_engine.py](../../tests/unit/test_engine.py)
 
 ```python
 """Engine(loop) 组件测试（asyncio 生产导向）。"""
@@ -769,8 +769,8 @@ from __future__ import annotations
 import asyncio
 import time
 
-from labor_agent.core.engine import EngineLimits, EngineLoop, PlanStep, ReflectDecision, RunContext, StepOutcome
-from labor_agent.core.protocol import AgentState, ErrorInfo, ExecutionEvent, build_initial_state
+from agent_forge.components.engine import EngineLimits, EngineLoop, PlanStep, ReflectDecision, RunContext, StepOutcome
+from agent_forge.components.protocol import AgentState, ErrorInfo, ExecutionEvent, build_initial_state
 
 
 def test_engine_run_success_flow() -> None:
@@ -989,7 +989,7 @@ def test_engine_backpressure_error_when_inflight_exceeded() -> None:
 ## 运行命令
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run pytest tests/test_protocol.py tests/test_engine.py
+UV_CACHE_DIR=.uv-cache uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py
 ```
 
 ---
@@ -1030,5 +1030,8 @@ uv add --dev pytest
 uv sync --dev
 
 # 3) 运行测试
-UV_CACHE_DIR=.uv-cache uv run pytest tests/test_protocol.py tests/test_engine.py
+UV_CACHE_DIR=.uv-cache uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py
 ```
+
+
+

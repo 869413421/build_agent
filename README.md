@@ -1,6 +1,6 @@
 # 从 0 到 1 的劳动纠纷智能体
 
-这是一个教程优先（tutorial-first）的仓库：目标是一步一步构建工程化 Agent 框架，并交付一个可实战使用的劳动纠纷处理指导智能体。
+这是一个教程优先（tutorial-first）的仓库：目标是一步一步构建工程化 Agent 框架（`agent_forge`），并交付可实战的智能体应用。
 
 ## 你将实现什么
 
@@ -35,17 +35,17 @@ pip install -e .[dev]
 2. 启动 API：
 
 ```bash
-labor-agent serve
+agent-forge version
 ```
 
 3. 测试健康检查：
 
 ```bash
-curl http://127.0.0.1:8000/v1/health
+uv run python -m uvicorn agent_forge.apps.api.app:app --reload
 ```
 
 4. 终端快速体验案情采集：
 
 ```bash
-labor-agent intake "公司拖欠我两个月工资并拒绝补发"
+curl http://127.0.0.1:8000/v1/health
 ```

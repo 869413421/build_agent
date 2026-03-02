@@ -1,4 +1,4 @@
-# Governance 文档索引
+﻿# Governance 文档索引
 
 为便于维护，所有项目治理与会话交接文档统一放在本目录。
 
@@ -16,4 +16,5 @@
 2. 再读 `AI_TASK_GUARDRAILS.md`
 3. 再读 `PROJECT_STATUS.md`
 4. 最后按 `ROADMAP_COMPONENTS.md` 执行
+
 

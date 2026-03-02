@@ -1,2 +1,0 @@
-[console_scripts]
-labor-agent = labor_agent.cli:app
