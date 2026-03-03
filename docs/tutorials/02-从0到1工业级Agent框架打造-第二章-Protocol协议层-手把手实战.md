@@ -65,7 +65,7 @@ flowchart TD
 ```
 
 这条链路你可以先记一句话：  
-所有输入输出，都先落到协议对象，再被各组件消费。
+所有输入输出，**都先落到协议对象**，再被各组件消费。
 
 ## 再讲“点”：本章具体实施步骤
 
@@ -83,83 +83,17 @@ New-Item -ItemType Directory -Force src/agent_forge/components/protocol/domain |
 New-Item -ItemType Directory -Force tests/unit | Out-Null
 ```
 
-代码讲解：
-
-1. 设计动机：章节主线和主线分离，避免“教学代码”和“交付代码”互相污染。
-2. 工程取舍：本章只聚焦一个组件（Protocol），目录尽量薄，避免提前引入无关结构。
-3. 边界条件：只放 Protocol 相关代码，不引入 Engine/Model Runtime 逻辑。
-4. 失败模式：目录没建对会直接导致 `pytest` 导入失败。
-
-### 第 2 步：准备主线工程文件
+### 第 2 步：写 Protocol 导出入口
 
 创建命令：
 
-```ash
-touch pyproject.toml
-```
-
-```powershell
-New-Item -ItemType File -Force "examples\\from_zero_to_one\\主线章节\\pyproject.toml" | Out-Null
-```
-文件：[pyproject.toml](../../pyproject.toml)
-
-```toml
-[project]
-name = "agent-forge-chapter-02"
-version = "0.1.0"
-requires-python = ">=3.11"
-dependencies = [
-  "pydantic>=2.11.0",
-  "pytest>=8.3.0",
-]
-
-[tool.pytest.ini_options]
-pythonpath = ["src"]
-```
-
-创建命令：
-
-```ash
-touch tests/conftest.py
-```
-
-```powershell
-New-Item -ItemType File -Force "examples\\from_zero_to_one\\主线章节\\tests\\conftest.py" | Out-Null
-```
-文件：[tests/conftest.py](../../tests/conftest.py)
-
-```python
-"""Test bootstrap for 主线 02 snapshot."""
-
-from __future__ import annotations
-
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-```
-
-代码讲解：
-
-1. 设计动机：让章节目录可以完全独立运行，不依赖仓库外部安装状态。
-2. 工程取舍：`pyproject.toml` 只保留本章最小依赖，降低读者启动阻力。
-3. 边界条件：测试路径固定依赖 `主线章节/src`，目录移动后需要同步改 `conftest.py`。
-4. 失败模式：`ModuleNotFoundError: No module named 'agent_forge'` 基本都是这里路径没配好。
-
-### 第 3 步：写 Protocol 导出入口
-
-创建命令：
-
-`ash
+```bash
 touch src/agent_forge/components/protocol/__init__.py
-`
+```
 
-`powershell
-New-Item -ItemType File -Force "examples\\from_zero_to_one\\主线章节\\src\\agent_forge\\components\\protocol\\__init__.py" | Out-Null
-`
+```powershell
+New-Item -ItemType File -Force "src\\agent_forge\\components\\protocol\\__init__.py" | Out-Null
+```
 文件：[src/agent_forge/components/protocol/__init__.py](../../src/agent_forge/components/protocol/__init__.py)
 
 ```python
@@ -192,13 +126,13 @@ __all__ = [
 
 创建命令：
 
-`ash
+```bash
 touch src/agent_forge/components/protocol/domain/__init__.py
-`
+```
 
-`powershell
-New-Item -ItemType File -Force "examples\\from_zero_to_one\\主线章节\\src\\agent_forge\\components\\protocol\\domain\\__init__.py" | Out-Null
-`
+```powershell
+New-Item -ItemType File -Force "src\\agent_forge\\components\\protocol\\domain\\__init__.py" | Out-Null
+```
 文件：[src/agent_forge/components/protocol/domain/__init__.py](../../src/agent_forge/components/protocol/domain/__init__.py)
 
 ```python
@@ -212,17 +146,17 @@ New-Item -ItemType File -Force "examples\\from_zero_to_one\\主线章节\\src\\a
 3. 边界条件：新增协议对象时必须同步更新 `__init__.py` 和 `__all__`。
 4. 失败模式：入口没导出会导致上层模块导入失败，或出现隐式依赖内部路径。
 
-### 第 4 步：写 Protocol 核心 Schema（完整可运行）
+### 第 3 步：写 Protocol 核心 Schema（完整可运行）
 
 创建命令：
 
-`ash
+```bash
 touch src/agent_forge/components/protocol/domain/schemas.py
-`
+```
 
-`powershell
-New-Item -ItemType File -Force "examples\\from_zero_to_one\\主线章节\\src\\agent_forge\\components\\protocol\\domain\\schemas.py" | Out-Null
-`
+```powershell
+New-Item -ItemType File -Force "src\\agent_forge\\components\\protocol\\domain\\schemas.py" | Out-Null
+```
 文件：[src/agent_forge/components/protocol/domain/schemas.py](../../src/agent_forge/components/protocol/domain/schemas.py)
 
 ```python
@@ -365,17 +299,17 @@ def build_initial_state(session_id: str) -> AgentState:
 3. 边界条件：本章只定义协议，不定义业务语义（保持领域无关）。
 4. 失败模式：空白字段没拦住会导致幂等键失效、会话分区失效、重试策略失效。
 
-### 第 5 步：写测试（完整可运行）
+### 第 4 步：写测试（完整可运行）
 
 创建命令：
 
-`ash
+```bash
 touch tests/unit/test_protocol.py
-`
+```
 
-`powershell
-New-Item -ItemType File -Force "examples\\from_zero_to_one\\主线章节\\tests\\unit\\test_protocol.py" | Out-Null
-`
+```powershell
+New-Item -ItemType File -Force "tests\\unit\\test_protocol.py" | Out-Null
+```
 文件：[tests/unit/test_protocol.py](../../tests/unit/test_protocol.py)
 
 ```python
@@ -480,52 +414,6 @@ def test_error_info_schema() -> None:
 3. 失败注入：用空白字符串触发校验，验证协议边界确实生效。
 4. 工程价值：后续任何组件改动只要破坏协议，这组测试会第一时间报警。
 
-### 第 6 步：主线一致性检查
-
-本章主线应与主线代码保持一致：
-
-1. [src/agent_forge/components/protocol/__init__.py](../../src/agent_forge/components/protocol/__init__.py) 对齐 [src/agent_forge/components/protocol/__init__.py](../../src/agent_forge/components/protocol/__init__.py)
-2. [src/agent_forge/components/protocol/domain/schemas.py](../../src/agent_forge/components/protocol/domain/schemas.py) 对齐 [src/agent_forge/components/protocol/domain/schemas.py](../../src/agent_forge/components/protocol/domain/schemas.py)
-3. [tests/unit/test_protocol.py](../../tests/unit/test_protocol.py) 对齐 [tests/unit/test_protocol.py](../../tests/unit/test_protocol.py)
-
-快速同步命令（可直接复制）：
-
-```bash
-```
-
-Windows PowerShell：
-
-```powershell
-```
-
-## 创建目录与文件命令（硬标准）
-
-不要一口气全部创建。按下面顺序，走到对应代码步骤时再执行下一条命令。
-
-Bash（分步执行）：
-2. `mkdir -p src/agent_forge/components/protocol`
-3. `mkdir -p src/agent_forge/components/protocol/domain`
-4. `mkdir -p tests`
-5. `mkdir -p tests/unit`
-6. `touch pyproject.toml`
-7. `touch src/agent_forge/components/protocol/__init__.py`
-8. `touch src/agent_forge/components/protocol/domain/__init__.py`
-9. `touch src/agent_forge/components/protocol/domain/schemas.py`
-10. `touch tests/conftest.py`
-11. `touch tests/unit/test_protocol.py`
-
-Windows PowerShell（分步执行）：
-2. `New-Item -ItemType Directory -Force "src\agent_forge\components\protocol" | Out-Null`
-3. `New-Item -ItemType Directory -Force "src\agent_forge\components\protocol\domain" | Out-Null`
-4. `New-Item -ItemType Directory -Force "tests" | Out-Null`
-5. `New-Item -ItemType Directory -Force "tests\unit" | Out-Null`
-6. `New-Item -ItemType File -Force "pyproject.toml" | Out-Null`
-7. `New-Item -ItemType File -Force "src\agent_forge\components\protocol\__init__.py" | Out-Null`
-8. `New-Item -ItemType File -Force "src\agent_forge\components\protocol\domain\__init__.py" | Out-Null`
-9. `New-Item -ItemType File -Force "src\agent_forge\components\protocol\domain\schemas.py" | Out-Null`
-10. `New-Item -ItemType File -Force "tests\conftest.py" | Out-Null`
-11. `New-Item -ItemType File -Force "tests\unit\test_protocol.py" | Out-Null`
-
 ## 运行命令
 
 先验证 主线 主线：
@@ -534,41 +422,29 @@ Windows PowerShell（分步执行）：
 uv run pytest tests/unit/test_protocol.py -q
 ```
 
-再验证主线：
-
-```bash
-uv run pytest tests/unit/test_protocol.py -q
-```
-
 ## 验证清单
 
-1. 主线章节 测试通过。
-2. 主线 `tests/unit/test_protocol.py` 测试通过。
-3. 本文所有路径可点击跳转到真实文件。
-4. 主线 主线与主线协议代码一致。
+1.  `tests/unit/test_protocol.py` 测试通过。
 
 ## 常见问题
 
 1. 报错：`ModuleNotFoundError: No module named 'agent_forge'`  
 修复：确认 [tests/conftest.py](../../tests/conftest.py) 存在，且 `SRC = ROOT / "src"` 未改错。
-
 2. 报错：`ValidationError` 但看不懂字段  
 修复：先看 `ToolCall` 和 `AgentState` 的校验器，重点检查是否传入空白字符串。
-
-3. 报错：主线和 主线章节 行为不一致  
-修复：按“第 6 步”逐文件对齐，避免只改了一边。
 
 ## 本章 DoD
 
 1. Protocol 核心对象全部可序列化和反序列化。
 2. 关键输入边界（空白字段）被协议层拦截。
-3. 主线 主线和主线测试都通过。
 4. 你能清楚回答每个对象“为什么存在”。
 
 ## 下一章预告
 
 1. 第三章进入 Engine 主循环，严格实现：`plan -> act -> observe -> reflect -> update -> finish`。
 2. 你会看到 Protocol 如何被 Engine 实际消费，以及为什么 reflect 不应该被省略。
+
+
 
 
 

@@ -1039,27 +1039,6 @@ def test_engine_backpressure_error_when_inflight_exceeded() -> None:
 
 ---
 
-### 第 5 步：主线同步（主线章节 -> src/tests）
-
-本章主线与主线需要同步 4 个关键文件：
-
-1. `engine` 导出入口：`src/agent_forge/components/engine/__init__.py`
-2. `engine` 主循环：`src/agent_forge/components/engine/application/loop.py`
-3. `engine` 测试：`tests/unit/test_engine.py`
-4. `protocol` 测试（Engine 依赖）：`tests/unit/test_protocol.py`
-
-快速同步命令（Bash）：
-
-```bash
-```
-
-Windows PowerShell：
-
-```powershell
-```
-
----
-
 ## 运行命令
 
 先跑最小验证（建议第一遍只跑这个）：

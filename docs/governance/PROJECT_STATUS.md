@@ -123,3 +123,9 @@
 - examples/from_zero_to_one/chapter_03|04 下 6 个 pytest-cache-files-* 目录存在系统 ACL 拒绝，当前会话无权删除；不影响主线代码与教程执行，但会在 git status 中显示权限 warning。
 
 27. 已按用户反馈清理第一章教程中的‘回放迁移噪音措辞’：修复主流程图与第5步文案、补齐空代码块说明、恢复被污染的示例代码字符串（agent_forge_chapter_01）。
+
+28. 第二章教程已修复创建文件命令：纠正错误路径（移除 examples 误路径），并将损坏的单反引号命令恢复为标准 fenced code block（bash/powershell）。
+33. 第四章教程已清理“主线同步”空命令块：改为“主线一致性检查”，并补齐 Bash/PowerShell 可执行检查命令（`ls` / `Get-ChildItem`），避免读者执行中断。
+34. 第三章教程已复核：无空命令块、命令渲染正常，本次未做多余改动，保持现有教学内容稳定。
+
+
