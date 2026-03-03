@@ -170,6 +170,7 @@ New-Item -ItemType File path
 * 不批量创建
 * 路径必须真实
 * 与仓库一致
+* 若新增的是 Python 包目录（会被 import），必须在同一步创建并展示对应 `__init__.py`（含创建命令与完整代码）
 
 ---
 
@@ -178,6 +179,7 @@ New-Item -ItemType File path
 * 一口气创建全部目录
 * 使用伪路径
 * 隐式存在文件
+* 在教程步骤中直接 `from ... import ...`，但未提前创建该包目录下的 `__init__.py`
 
 ---
 

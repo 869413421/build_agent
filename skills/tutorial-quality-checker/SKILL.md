@@ -52,6 +52,8 @@ description: 审核与修复教程文章质量。用于检查 docs/tutorials 下
 
 发现漂移时：优先修教程，不随意改主线代码。
 
+其中“代码漂移”是重点检查项，默认必须执行。
+
 ## 5. 执行自动检查脚本
 
 运行：
@@ -67,7 +69,8 @@ uv run python skills/tutorial-quality-checker/scripts/check_tutorial_markers.py 
 说明：
 
 1. 脚本用于快速发现结构/命令块硬伤。
-2. 脚本通过不代表质量已达标，仍需人工审阅“叙事清晰度与工程取舍讲解”。
+2. 脚本会自动执行代码漂移检查：`文件：[...](path)` 后的代码块需与真实文件一致。
+3. 脚本通过不代表质量已达标，仍需人工审阅“叙事清晰度与工程取舍讲解”。
 
 ## 6. 输出格式
 
@@ -77,4 +80,3 @@ uv run python skills/tutorial-quality-checker/scripts/check_tutorial_markers.py 
 2. 本步改动
 3. 验证结果
 4. 请审核
-

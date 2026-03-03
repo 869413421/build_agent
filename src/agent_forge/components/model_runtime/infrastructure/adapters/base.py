@@ -58,6 +58,19 @@ class OpenAICompatibleAdapter(ProviderAdapter):
         start_t = time.monotonic()
         try:
             raw_response = self.client.chat.completions.create(**payload)
+        except openai.BadRequestError as exc:
+            # 某些兼容服务不支持 json_schema，这里自动降级为 json_object 再试一次。
+            if request.response_schema and self._is_response_format_unavailable(exc):
+                logger.warning("%s response_format 不可用，自动降级为 json_object 重试。", self.provider_name)
+                fallback_payload = self._build_payload(
+                    request,
+                    response_format={"type": "json_object"},
+                    **kwargs,
+                )
+                raw_response = self.client.chat.completions.create(**fallback_payload)
+            else:
+                # BadRequest 通常是参数不被模型支持，重试不会自愈。
+                raise ModelError(error_code=f"{self.provider_name.upper()}_BAD_REQUEST", message=str(exc), retryable=False) from exc
         except openai.AuthenticationError as exc:
             raise ModelAuthenticationError(str(exc)) from exc
         except openai.RateLimitError as exc:
@@ -103,15 +116,29 @@ class OpenAICompatibleAdapter(ProviderAdapter):
         merged_kwargs.update(request.extra_kwargs())
         merged_kwargs.update(kwargs)
 
+        response_format = merged_kwargs.pop("response_format", None)
         if request.response_schema:
-            schema_name = merged_kwargs.pop("request_id", "model_runtime_schema")
-            payload["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": schema_name,
-                    "schema": request.response_schema,
-                },
-            }
+            if response_format is None:
+                schema_name = merged_kwargs.pop("request_id", "model_runtime_schema")
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": schema_name,
+                        "schema": request.response_schema,
+                    },
+                }
+            else:
+                payload["response_format"] = response_format
+            # 无论使用 json_schema 还是 json_object，都加一层显式 JSON 约束，避免模型输出闲聊文本。
+            payload["messages"].append(
+                {
+                    "role": "system",
+                    "content": (
+                        "请仅输出合法 JSON，且必须满足以下 JSON Schema：\n"
+                        f"{json.dumps(request.response_schema, ensure_ascii=False)}"
+                    ),
+                }
+            )
 
         timeout_ms = merged_kwargs.pop("timeout_ms", None)
         if timeout_ms is not None:
@@ -119,6 +146,10 @@ class OpenAICompatibleAdapter(ProviderAdapter):
 
         payload.update(merged_kwargs)
         return payload
+
+    def _is_response_format_unavailable(self, exc: openai.BadRequestError) -> bool:
+        text = str(exc).lower()
+        return "response_format" in text and "unavailable" in text
 
     def _extract_tool_calls(self, message: Any) -> list[ToolCall]:
         tool_calls: list[ToolCall] = []

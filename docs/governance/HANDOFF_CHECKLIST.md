@@ -54,3 +54,12 @@
 25. [x] 第三章已按新模板/新标准完成增量优化：结构补齐、运行命令双端一致、闭环验证补全、DoD 与预告完善。
 26. [x] 第三章导出文件步骤已修复与主线一致（导入路径与讲解文案对齐真实代码）。
 27. [x] 已创建教程文章质检 Skill（tutorial-quality-checker）并完成脚本可用性验证。
+28. [x] 第四章已完成缺失段落补齐并通过文章检查 Skill 校验。
+29. [x] 文章检查 Skill 已支持代码漂移检查并完成第四章实测。
+30. [x] 第四章代码漂移已修复，文章检查 Skill 复检通过（含 BOM 兼容）。
+31. [x] 第四章环境准备与 .env 配置方式已落地，文章检查 Skill 复检通过。
+32. [x] 第四章 `model_runtime` 相关代码已补齐为教程内全量可复制版本（含 `__init__.py`、`stub.py`、adapter/runtime/测试全文），并通过文章检查 Skill（含代码漂移检查）。
+33. [x] 第四章已将缺失的 `__init__.py` 前置到对应步骤，且《黄金标准》《章节模板》已新增“包目录必须同步创建并展示 `__init__.py`”硬约束，避免后续再次遗漏。
+34. [x] 已修复 `.env` BOM 导致的环境变量读取失败：代码层兼容 `utf-8-sig`，教程层改为无 BOM PowerShell 写法，并补充 BOM 失败场景排查命令。
+35. [x] 已修正 `response_format` 过于刚性的实现：支持通用透传 `response_format`，并在服务端不支持 `json_schema` 时自动降级 `json_object`；单测与第四章教程同步完成。
+36. [x] 已将 DeepSeek 教学脚本迁移到 `examples/model_runtime/deepseek_demo.py`，并移除 `apps` 下同名脚本；第四章路径与命令已同步。

@@ -164,6 +164,23 @@ def test_deepseek_adapter_should_use_provider_defaults() -> None:
     assert res.stats.total_tokens == 18
 
 
+def test_response_format_json_object_should_pass_through() -> None:
+    """验证 response_format 可作为通用参数透传。"""
+
+    client, completions = _build_fake_client('{"answer":"deepseek","confidence":0.9}')
+    adapter = DeepSeekAdapter(api_key="test-key", model="deepseek-chat", client=client)
+    runtime = ModelRuntime(adapter=adapter)
+    req = ModelRequest(
+        messages=[AgentMessage(role="user", content="hello deepseek")],
+        response_schema={"type": "object", "required": ["answer", "confidence"]},
+    )
+
+    runtime.generate(req, response_format={"type": "json_object"})
+    kwargs = completions.last_kwargs or {}
+    assert kwargs["response_format"]["type"] == "json_object"
+    assert any("JSON Schema" in (m.get("content", "")) for m in kwargs["messages"])
+
+
 def test_structural_output_validation() -> None:
     """验证 JSON Schema 结构解析是否正常工作。"""
     

@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# 1. 在导入阶段加载 .env，保证 Settings 初始化时可读到环境变量。
-load_dotenv(override=False)
+# 1. 在导入阶段加载 .env，兼容 UTF-8 BOM（Windows PowerShell 常见）。
+load_dotenv(override=False, encoding="utf-8-sig")
 
 
 class AppConfig(BaseSettings):
@@ -26,7 +26,7 @@ class AppConfig(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=".env",
-        env_file_encoding="utf-8",
+        env_file_encoding="utf-8-sig",
         env_prefix="AF_",
         extra="ignore",
     )

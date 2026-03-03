@@ -96,8 +96,8 @@
 11. 第四章教程已修正与主线一致的目录与导入路径（`support/config/settings.py`、`support/logging/logger.py`、`model_runtime/infrastructure/adapters/*`），并新增 Bash/PowerShell 主线同步命令。
 12. 验证结果：`tests/unit/test_model_runtime.py` 在主线与 chapter_04 快照均通过（7 passed）；`tests/unit/test_protocol.py + tests/unit/test_engine.py + tests/unit/test_model_runtime.py` 主线回归通过（18 passed）。
 13. 第四章已补齐“通用 config/logging 集成”到代码与教程：`model_runtime` 与 adapters 统一使用 `support/config/settings.py`、`support/logging/logger.py`，并在教程中新增集成说明与边界说明。
-14. 第四章新增 DeepSeek 真实调用打通入口：`src/agent_forge/apps/model_runtime_deepseek_demo.py`（支持 `uv run python -m ...`），并同步到 chapter_04 快照与教程。
-15. 根据用户审阅意见，`DeepSeek` 真实调用不再作为自动化测试用例；改为教程中的“手动线上打通步骤”（`uv run python -m agent_forge.apps.model_runtime_deepseek_demo ...`）并保留 `test_model_runtime.py` 作为自动化回归。
+14. 第四章新增 DeepSeek 真实调用打通入口：`examples/model_runtime/deepseek_demo.py`（支持 `uv run python -m ...`），并同步到 chapter_04 快照与教程。
+15. 根据用户审阅意见，`DeepSeek` 真实调用不再作为自动化测试用例；改为教程中的“手动线上打通步骤”（`uv run python examples/model_runtime/deepseek_demo.py ...`）并保留 `test_model_runtime.py` 作为自动化回归。
 16. 第四章已重排步骤顺序：先前置 support(config/logging) 集成并给出完整代码讲解，再进入 model_runtime 主干实现，避免读者认知断层。
 
 
@@ -136,3 +136,12 @@
 39. 第三章教程“创建导出文件”已修复代码漂移：`engine/__init__.py` 示例导入改为 `agent_forge.components.engine.application.loop`，并同步修正文案中的导入边界描述。
 40. 已新增文章质检技能 `skills/tutorial-quality-checker`：包含 `SKILL.md` 与自动检查脚本 `scripts/check_tutorial_markers.py`，可检查章节结构、命令块空块、文件创建命令缺失与文件路径标记问题。
 41. 质检脚本已增强为关键词匹配，减少标题微差异误报；已在第三章上验证通过。
+42. 第四章教程已按新模板补齐缺失段落：新增“架构位置说明”“本章主线改动范围”“增量闭环验证”“本章 DoD”“下一章预告”，并补全运行命令 PowerShell 等价块；经 tutorial-quality-checker 校验通过。
+43. tutorial-quality-checker 已升级：新增“代码漂移”自动检查（文件标记后的代码块与真实文件逐项对比），并将其纳入默认检查流程。
+44. 已完成第四章代码漂移修复：按主线真实文件对齐 `settings.py`、`logger.py`、`schemas.py`、`model_runtime_deepseek_demo.py` 教程代码块；并升级质检脚本支持 BOM 兼容，避免 UTF-8-BOM 文件误报漂移。
+45. 第四章已补齐“环境准备与缺包兜底”段落（uv add + uv sync 可复制命令），并将 DeepSeek 手动打通从临时环境变量改为 `.env` 配置方式；常见问题同步改为 `.env` 排查路径。
+46. 第四章已按“model_runtime 全量代码可复制”标准补齐：新增 `model_runtime` 各层 `__init__.py`、`infrastructure/adapters/stub.py` 的完整代码与创建命令，并补全 `base.py/openai_adapter.py/deepseek_adapter.py/runtime.py/test_model_runtime.py` 全文展示；同时修正真实文件清单中 `contracts.py` 错误路径为 `schemas.py`，经 `tutorial-quality-checker` 复检通过。
+47. 根据审阅反馈，第四章已把缺失的 `__init__.py` 前置到对应实现步骤（domain / infrastructure / adapters / application），并清理第 5.5 步重复段落；同时将“包目录必须同步创建并展示 `__init__.py`”写入 `docs/tutorials/_TUTORIAL_GOLD_STANDARD.md` 与 `docs/tutorials/_CHAPTER_TEMPLATE.md` 作为硬约束，复检通过。
+48. 已修复 `.env` BOM 兼容问题：`src/agent_forge/support/config/settings.py` 改为 `load_dotenv(..., encoding=\"utf-8-sig\")` 且 `env_file_encoding=\"utf-8-sig\"`；第四章 PowerShell `.env` 创建命令改为无 BOM 写入，并新增 BOM 排查/重写步骤，避免 `\ufeffAF_DEEPSEEK_API_KEY` 读不到。
+49. 已将 `response_format` 调整为通用可透传策略：优先透传调用方传入的 `response_format`（如 `json_object`），未传入且存在 `response_schema` 时默认走 `json_schema`；若服务端返回 `response_format unavailable`，适配器自动降级为 `json_object` 再试一次。同步补充单测并更新第四章对应代码块与说明，复检通过。
+50. `model_runtime_deepseek_demo` 已从 `src/agent_forge/apps/` 迁移至 `examples/model_runtime/deepseek_demo.py`，第四章所有创建命令/文件路径/运行命令已同步到 `examples`，避免将教学脚本误归类为应用入口。

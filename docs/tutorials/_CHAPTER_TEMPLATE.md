@@ -128,6 +128,11 @@ New-Item -ItemType File src/agent_forge/<component>/<file>.py
 * 批量创建
 * 目录脚本
 * 伪路径
+* 新增 Python 包目录却不创建 `__init__.py`
+
+补充约束：
+
+* 若该文件所在目录会被 Python import（包目录），必须在同一步补齐对应 `__init__.py` 的创建命令与完整代码。
 
 ---
 
