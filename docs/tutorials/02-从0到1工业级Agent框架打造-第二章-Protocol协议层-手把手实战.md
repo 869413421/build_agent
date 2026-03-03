@@ -187,12 +187,12 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\protocol\\domain\\
 文件：[src/agent_forge/components/protocol/domain/schemas.py](../../src/agent_forge/components/protocol/domain/schemas.py)
 
 ```python
-"""Protocol component (framework contract layer).
+"""协议组件（框架契约层）。
 
-Why this layer exists:
-1. Share one data contract across Engine, Model Runtime, Tool Runtime.
-2. Provide stable structured inputs for Observability/Evaluator.
-3. Control schema evolution via protocol versions.
+为什么需要这一层：
+1. 在 Engine、Model Runtime、Tool Runtime 之间共享统一的数据契约。
+2. 为 Observability / Evaluator 提供稳定的结构化输入。
+3. 通过协议版本控制 Schema 的演进。
 """
 
 from __future__ import annotations
@@ -207,114 +207,114 @@ PROTOCOL_VERSION = "v1"
 
 
 def _now_iso() -> str:
-    """Return current UTC timestamp in ISO format."""
+    """返回当前 UTC 时间戳（ISO 格式）。"""
 
     return datetime.now(timezone.utc).isoformat()
 
 
 class ErrorInfo(BaseModel):
-    """Unified runtime error contract."""
+    """统一的运行时错误契约。"""
 
-    error_code: str = Field(..., min_length=1, description="Error code")
-    error_message: str = Field(..., min_length=1, description="Error message")
-    retryable: bool = Field(default=False, description="Whether retryable")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
+    error_code: str = Field(..., min_length=1, description="错误码")
+    error_message: str = Field(..., min_length=1, description="错误信息")
+    retryable: bool = Field(default=False, description="是否可重试")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
 
 
 class AgentMessage(BaseModel):
-    """Single message object in the agent conversation."""
+    """Agent 对话中的单条消息对象。"""
 
-    message_id: str = Field(default_factory=lambda: f"msg_{uuid4().hex}", description="Message ID")
-    role: Literal["system", "developer", "user", "assistant", "tool"] = Field(..., description="Message role")
-    content: str = Field(..., min_length=1, description="Message content")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Extended metadata")
-    created_at: str = Field(default_factory=_now_iso, description="Creation time")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
+    message_id: str = Field(default_factory=lambda: f"msg_{uuid4().hex}", description="消息 ID")
+    role: Literal["system", "developer", "user", "assistant", "tool"] = Field(..., description="消息角色")
+    content: str = Field(..., min_length=1, description="消息内容")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="扩展元数据")
+    created_at: str = Field(default_factory=_now_iso, description="创建时间")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
 
 
 class ToolCall(BaseModel):
-    """Tool invocation request.
+    """工具调用请求。
 
-    `tool_call_id` is the idempotency key.
+    `tool_call_id` 是幂等键（idempotency key）。
     """
 
-    tool_call_id: str = Field(..., min_length=1, description="Unique tool call ID")
-    tool_name: str = Field(..., min_length=1, description="Tool name")
-    args: dict[str, Any] = Field(default_factory=dict, description="Tool arguments")
-    principal: str = Field(..., min_length=1, description="Caller principal for auth checks")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
+    tool_call_id: str = Field(..., min_length=1, description="唯一工具调用 ID")
+    tool_name: str = Field(..., min_length=1, description="工具名称")
+    args: dict[str, Any] = Field(default_factory=dict, description="工具参数")
+    principal: str = Field(..., min_length=1, description="调用方主体（用于鉴权校验）")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
 
     @field_validator("tool_call_id", "tool_name", "principal")
     @classmethod
     def _not_blank(cls, value: str) -> str:
-        # Block whitespace-only values from entering the execution chain.
+        # 禁止仅包含空白字符的值进入执行链路。
         if not value.strip():
-            raise ValueError("Field must not be blank")
+            raise ValueError("字段不能为空白")
         return value
 
 
 class ToolResult(BaseModel):
-    """Tool execution result."""
+    """工具执行结果。"""
 
-    tool_call_id: str = Field(..., min_length=1, description="Matched tool call ID")
-    status: Literal["ok", "error"] = Field(..., description="Execution status")
-    output: dict[str, Any] = Field(default_factory=dict, description="Output payload")
-    error: ErrorInfo | None = Field(default=None, description="Error details")
-    latency_ms: int = Field(default=0, ge=0, description="Latency in milliseconds")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
+    tool_call_id: str = Field(..., min_length=1, description="匹配的工具调用 ID")
+    status: Literal["ok", "error"] = Field(..., description="执行状态")
+    output: dict[str, Any] = Field(default_factory=dict, description="输出载荷")
+    error: ErrorInfo | None = Field(default=None, description="错误详情")
+    latency_ms: int = Field(default=0, ge=0, description="执行耗时（毫秒）")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
 
 
 class ExecutionEvent(BaseModel):
-    """Execution event for tracing, replay and evaluation."""
+    """用于追踪、回放和评估的执行事件。"""
 
     trace_id: str = Field(..., min_length=1, description="Trace ID")
     run_id: str = Field(..., min_length=1, description="Run ID")
-    step_id: str = Field(..., min_length=1, description="Step ID")
-    parent_step_id: str | None = Field(default=None, description="Parent step ID")
+    step_id: str = Field(..., min_length=1, description="步骤 ID")
+    parent_step_id: str | None = Field(default=None, description="父步骤 ID")
     event_type: Literal["plan", "tool_call", "tool_result", "state_update", "finish", "error"] = Field(
-        ..., description="Event type"
+        ..., description="事件类型"
     )
-    payload: dict[str, Any] = Field(default_factory=dict, description="Event payload")
-    error: ErrorInfo | None = Field(default=None, description="Event error")
-    created_at: str = Field(default_factory=_now_iso, description="Creation time")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
+    payload: dict[str, Any] = Field(default_factory=dict, description="事件载荷")
+    error: ErrorInfo | None = Field(default=None, description="事件错误")
+    created_at: str = Field(default_factory=_now_iso, description="创建时间")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
 
 
 class FinalAnswer(BaseModel):
-    """Structured final output, kept domain-agnostic."""
+    """结构化最终输出，与具体业务领域无关。"""
 
-    status: Literal["success", "partial", "failed"] = Field(..., description="Task completion status")
-    summary: str = Field(..., min_length=1, description="Summary of result")
-    output: dict[str, Any] = Field(default_factory=dict, description="Structured output payload")
-    artifacts: list[dict[str, Any]] = Field(default_factory=list, description="Execution artifacts")
-    references: list[str] = Field(default_factory=list, description="Optional references")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
+    status: Literal["success", "partial", "failed"] = Field(..., description="任务完成状态")
+    summary: str = Field(..., min_length=1, description="结果摘要")
+    output: dict[str, Any] = Field(default_factory=dict, description="结构化输出载荷")
+    artifacts: list[dict[str, Any]] = Field(default_factory=list, description="执行产物")
+    references: list[str] = Field(default_factory=list, description="可选参考信息")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
 
 
 class AgentState(BaseModel):
-    """Single source of truth for the engine runtime."""
+    """Engine 运行时的单一事实来源（Single Source of Truth）。"""
 
-    session_id: str = Field(..., min_length=1, description="Session ID")
+    session_id: str = Field(..., min_length=1, description="会话 ID")
     trace_id: str = Field(default_factory=lambda: f"trace_{uuid4().hex}", description="Trace ID")
     run_id: str = Field(default_factory=lambda: f"run_{uuid4().hex}", description="Run ID")
-    messages: list[AgentMessage] = Field(default_factory=list, description="Messages")
-    tool_calls: list[ToolCall] = Field(default_factory=list, description="Tool call records")
-    tool_results: list[ToolResult] = Field(default_factory=list, description="Tool result records")
-    events: list[ExecutionEvent] = Field(default_factory=list, description="Execution events")
-    final_answer: FinalAnswer | None = Field(default=None, description="Final structured output")
-    protocol_version: str = Field(default=PROTOCOL_VERSION, description="Protocol version")
+    messages: list[AgentMessage] = Field(default_factory=list, description="消息列表")
+    tool_calls: list[ToolCall] = Field(default_factory=list, description="工具调用记录")
+    tool_results: list[ToolResult] = Field(default_factory=list, description="工具执行结果记录")
+    events: list[ExecutionEvent] = Field(default_factory=list, description="执行事件列表")
+    final_answer: FinalAnswer | None = Field(default=None, description="最终结构化输出")
+    protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
 
     @field_validator("session_id")
     @classmethod
     def _session_id_not_blank(cls, value: str) -> str:
-        # Session ID is the partition key; blank values can pollute cross-session state.
+        # session_id 是分区键；空值可能导致跨会话状态污染。
         if not value.strip():
-            raise ValueError("session_id must not be blank")
+            raise ValueError("session_id 不能为空")
         return value
 
 
 def build_initial_state(session_id: str) -> AgentState:
-    """Build the initial state used by the engine loop."""
+    """构建用于引擎循环的初始状态。"""
 
     return AgentState(session_id=session_id)
 ```
@@ -340,7 +340,7 @@ New-Item -ItemType File -Force "tests\\unit\\test_protocol.py" | Out-Null
 文件：[tests/unit/test_protocol.py](../../tests/unit/test_protocol.py)
 
 ```python
-"""Protocol component tests."""
+"""Protocol 组件测试。"""
 
 from __future__ import annotations
 
@@ -363,7 +363,7 @@ from agent_forge.components.protocol import (
 
 
 def test_initial_state_contains_required_ids_and_version() -> None:
-    """Initial state should include trace/run/protocol fields."""
+    """初始状态应自动带 trace/run/protocol 字段。"""
 
     state = build_initial_state("session_001")
     assert state.session_id == "session_001"
@@ -373,13 +373,13 @@ def test_initial_state_contains_required_ids_and_version() -> None:
 
 
 def test_protocol_roundtrip_json_serialization() -> None:
-    """Protocol objects should support JSON round-trip."""
+    """协议对象应支持 JSON 序列化与反序列化。"""
 
-    message = AgentMessage(role="user", content="Company delayed salary payment")
+    message = AgentMessage(role="user", content="公司拖欠工资")
     call = ToolCall(
         tool_call_id="tc_001",
-        tool_name="law_search",
-        args={"query": "salary delay"},
+        tool_name="labor_law_search",
+        args={"query": "拖欠工资"},
         principal="worker_user",
     )
     result = ToolResult(tool_call_id="tc_001", status="ok", output={"hits": 2}, latency_ms=18)
@@ -392,10 +392,10 @@ def test_protocol_roundtrip_json_serialization() -> None:
     )
     final = FinalAnswer(
         status="success",
-        summary="Task completed with structured output",
-        output={"answer": "Collect evidence and file mediation first", "priority": "high"},
+        summary="任务已完成并生成结构化结果",
+        output={"answer": "工资争议处理建议", "priority": "high"},
         artifacts=[{"type": "plan", "id": "plan_001"}],
-        references=["law_search:doc_123"],
+        references=["labor_law_search:doc_123"],
     )
     state = AgentState(
         session_id="session_002",
@@ -410,14 +410,14 @@ def test_protocol_roundtrip_json_serialization() -> None:
     data = json.loads(raw)
     loaded = AgentState.model_validate(data)
     assert loaded.session_id == "session_002"
-    assert loaded.tool_calls[0].tool_name == "law_search"
+    assert loaded.tool_calls[0].tool_name == "labor_law_search"
     assert loaded.final_answer is not None
     assert loaded.final_answer.protocol_version == PROTOCOL_VERSION
     assert loaded.final_answer.status == "success"
 
 
 def test_blank_fields_must_fail_validation() -> None:
-    """Blank key fields must fail validation."""
+    """空白关键字段必须校验失败。"""
 
     with pytest.raises(ValidationError):
         ToolCall(tool_call_id=" ", tool_name="t", args={}, principal="p")
@@ -427,11 +427,13 @@ def test_blank_fields_must_fail_validation() -> None:
 
 
 def test_error_info_schema() -> None:
-    """Error schema should be stable and include version."""
+    """错误结构应稳定且带协议版本。"""
 
     err = ErrorInfo(error_code="TOOL_TIMEOUT", error_message="tool timeout", retryable=True)
     assert err.retryable is True
     assert err.protocol_version == PROTOCOL_VERSION
+
+
 ```
 
 代码讲解：
@@ -443,7 +445,7 @@ def test_error_info_schema() -> None:
 
 ## 运行命令
 
-先验证 主线：
+验证：
 
 ```bash
 uv run pytest tests/unit/test_protocol.py -q

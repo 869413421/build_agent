@@ -13,6 +13,30 @@
 
 ---
 
+## 架构位置说明
+
+### 当前系统结构（第 3 章开始前）
+
+```mermaid
+flowchart TD
+  A[Protocol 契约层] --> B[待接入的执行闭环]
+  B --> C[Model/Tool Runtime 将在后续接入]
+```
+
+### 本章完成后的结构
+
+```mermaid
+flowchart TD
+  A[Protocol 契约层] --> B[Engine Loop]
+  B --> C[执行事件与最终答案]
+  C --> D[测试回归护栏]
+```
+
+1. 新模块依赖谁：Engine 依赖 Protocol 契约对象，不反向依赖上层应用。
+2. 谁依赖它：后续 Model Runtime、Tool Runtime、Observability 都基于 Engine 事件流扩展。
+3. 依赖方向是否变化：从“只定义对象”推进到“对象驱动执行闭环”。
+4. 循环风险：本章保持单向依赖，避免 Engine 反向引用运行时实现。
+
 ## 前置条件
 
 1. 已完成第二章 Protocol 组件。
@@ -103,13 +127,38 @@ flowchart TD
 
 ---
 
+## 本章主线改动范围（强制声明）
+
+### 代码目录
+
+- `src/agent_forge/components/engine/`
+
+### 测试目录
+
+- `tests/unit/`
+
+### 本章涉及的真实文件
+
+- [src/agent_forge/components/engine/__init__.py](../../src/agent_forge/components/engine/__init__.py)
+- [src/agent_forge/components/engine/application/__init__.py](../../src/agent_forge/components/engine/application/__init__.py)
+- [src/agent_forge/components/engine/application/loop.py](../../src/agent_forge/components/engine/application/loop.py)
+- [tests/unit/test_engine.py](../../tests/unit/test_engine.py)
+
+约束说明：本章只增量建设 Engine 执行层，不推翻前两章协议与入口结构。
+
 ## 实施步骤
 
 ### 第 1 步：创建目录
 
 ```bash
 mkdir -p src/agent_forge/components/engine
+mkdir -p src/agent_forge/components/engine/application
 ```
+
+```powershell
+New-Item -ItemType Directory -Force src/agent_forge/components/engine/application | Out-Null
+```
+
 
 ### 第 2 步：写导出文件
 
@@ -128,6 +177,33 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\__init__.p
 ```python
 """Engine 组件导出。"""
 
+from agent_forge.components.engine.application.loop import (
+    EngineLimits,
+    EngineLoop,
+    PlanStep,
+    ReflectDecision,
+    RunContext,
+    StepOutcome,
+)
+
+__all__ = ["EngineLimits", "EngineLoop", "StepOutcome", "ReflectDecision", "RunContext", "PlanStep"]
+```
+
+创建命令：
+
+```bash
+touch src/agent_forge/components/engine/application/__init__.py
+```
+
+```powershell
+New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\application\\__init__.py" | Out-Null
+```
+
+文件：[src/agent_forge/components/engine/application/__init__.py](../../src/agent_forge/components/engine/application/__init__.py)
+
+```python
+"""Engine application exports."""
+
 from .loop import EngineLimits, EngineLoop, PlanStep, ReflectDecision, RunContext, StepOutcome
 
 __all__ = ["EngineLimits", "EngineLoop", "StepOutcome", "ReflectDecision", "RunContext", "PlanStep"]
@@ -136,10 +212,10 @@ __all__ = ["EngineLimits", "EngineLoop", "StepOutcome", "ReflectDecision", "RunC
 #### 代码讲解
 
 1. 只导出稳定公共接口（`EngineLoop`、`EngineLimits`、`PlanStep` 等），避免外部依赖内部私有实现。
-2. 这是“模块边界治理”，不是语法洁癖：业务方只依赖 `core.engine`，后续你把执行器从线程池换成进程池、把事件结构升级，都不会影响调用方 import。
-3. 失败模式：如果直接暴露内部函数，后续重构会导致“看似没改 API、实际调用全挂”的隐性破坏。
+2. `application/__init__.py` 是子包边界：它保证 `engine` 与 `engine.application` 两层导出都稳定，避免调用方直接硬编码到 `loop.py` 文件路径。
+3. 这是“模块边界治理”，不是语法洁癖：业务方只依赖 `agent_forge.components.engine` 或 `agent_forge.components.engine.application`，后续你把执行器从线程池换成进程池、把事件结构升级，都不会影响调用方 import。
 
-### 第 2.5 步：先看执行链路图（先理解再写代码）
+### 第 2.5 步：先看执行链路图
 
 ```mermaid
 flowchart TD
@@ -160,7 +236,7 @@ flowchart TD
 2. `retry` 回到 `act`，但必须受 `max_retry_per_step` 和 `time_budget` 双约束。  
 3. `abort` 不继续推进 `update`，直接记录错误并结束，保证状态一致性。  
 
-### 第 3 步：写 Engine 主循环（完整代码）
+### 第 3 步：写 Engine 主循环
 
 创建命令：
 
@@ -795,20 +871,9 @@ Engine 只定义“执行协议”，不绑定“执行介质”。同一套 Eng
 4. attempt 计数  
 优势：可直接衡量“问题是执行失败还是重试过多”，为后续评测提供输入。
 
-#### 你在代码评审时应重点检查的 10 个点
 
-1. 是否存在 `update` 之外的“隐式成功提交”。  
-2. `resume_skip` 是否只依据稳定 key。  
-3. `max_steps` 是否按 executed 计数。  
-4. `time_budget` 是否在 retry 循环中检查。  
-5. 执行器错误是否统一映射错误码。  
-6. reflect 是否真实参与决策而不是日志装饰。  
-7. 事件是否都经由 `_append_event()`。  
-8. `finish` 是否在所有分支都可达。  
-9. trace 是否只写摘要，避免大对象直灌。  
-10. `FinalAnswer` 是否可被上层稳定消费（字段名和语义一致）。
 
-### 第 4 步：写完整测试（完整代码）
+### 第 4 步：写完整测试
 
 创建命令：
 
@@ -1054,6 +1119,20 @@ uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q
 ```
 
 ---
+
+PowerShell 等价命令：
+
+```powershell
+uv run pytest tests/unit/test_engine.py -q
+uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q
+```
+
+## 增量闭环验证
+
+1. 执行闭环可运行：`plan -> act -> observe -> reflect -> update -> finish` 在测试中有覆盖。
+2. 故障路径可控：超时、重试、背压都能产出标准错误事件。
+3. 恢复语义稳定：stable step key 与 executed_steps 预算语义保持一致。
+
 ## 验证清单
 
 1. Protocol 与 Engine 测试全部通过。
@@ -1077,4 +1156,15 @@ uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q
 ---
 
 
+
+
+## 本章 DoD
+
+1. Engine 主循环已真实接入主线代码并可独立回归。
+2. 关键失败模式（重试/超时/背压/恢复）均有自动化测试覆盖。
+3. 不引入循环依赖，且不破坏 Protocol 既有契约。
+
+## 下一章预告
+
+下一章进入 Model Runtime：把 Engine 的 `act` 从“可执行接口”升级为“真实模型调用能力”，并统一适配 OpenAI / DeepSeek 与结构化输出防崩策略。
 
