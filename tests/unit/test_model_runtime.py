@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pytest
@@ -17,7 +19,7 @@ from agent_forge.components.model_runtime import (
     StubDeepSeekAdapter,
     StubOpenAIAdapter,
 )
-from agent_forge.components.model_runtime.domain.schemas import ModelParseError
+from agent_forge.components.model_runtime.domain.schemas import ModelParseError, ModelStreamEvent
 from agent_forge.components.protocol import AgentMessage
 
 
@@ -48,6 +50,46 @@ class _BrokenJSONAdapter(ProviderAdapter):
                 cost_usd=0.001,
             ),
         )
+
+    def generate_stream(self, request: ModelRequest, **kwargs: object) -> Iterator[ModelStreamEvent]:
+        now = int(time.time() * 1000)
+        yield ModelStreamEvent(event_type="start", request_id=request.request_id or "req_test", sequence=0, timestamp_ms=now)
+        yield ModelStreamEvent(event_type="delta", request_id=request.request_id or "req_test", sequence=1, delta="{", timestamp_ms=now)
+        yield ModelStreamEvent(event_type="end", request_id=request.request_id or "req_test", sequence=2, content="{", timestamp_ms=now)
+
+
+class _CaptureRequestAdapter(ProviderAdapter):
+    """捕获请求以验证 generate hooks 行为。"""
+
+    def __init__(self) -> None:
+        self.captured_request: ModelRequest | None = None
+
+    def generate(self, request: ModelRequest, **kwargs: object) -> ModelResponse:
+        self.captured_request = request
+        return ModelResponse(content='{"ok": true}', stats=ModelStats(total_tokens=1))
+
+    def generate_stream(self, request: ModelRequest, **kwargs: object) -> Iterator[ModelStreamEvent]:
+        now = int(time.time() * 1000)
+        yield ModelStreamEvent(event_type="start", request_id=request.request_id or "req_capture", sequence=0, timestamp_ms=now)
+        yield ModelStreamEvent(event_type="end", request_id=request.request_id or "req_capture", sequence=1, content='{"ok": true}', timestamp_ms=now)
+
+
+class _GenerateHooks:
+    def __init__(self) -> None:
+        self.before_called = False
+        self.after_called = False
+
+    def before_request(self, request: ModelRequest) -> ModelRequest:
+        self.before_called = True
+        request.messages.append(AgentMessage(role="system", content="hook_injected"))
+        return request
+
+    def on_stream_event(self, event: ModelStreamEvent) -> ModelStreamEvent:
+        return event
+
+    def after_response(self, response: ModelResponse) -> ModelResponse:
+        self.after_called = True
+        return response
 
 
 class _FakeCompletions:
@@ -240,5 +282,20 @@ def test_self_healing_retry_flow_exceeds_limit() -> None:
     assert "JSON 格式非法" in str(exc_info.value.message)
     # 因为首调用 + 2次重试 = 3次
     assert adapter.call_count == 3
+
+
+def test_generate_should_call_hooks_for_non_stream() -> None:
+    req = ModelRequest(messages=[AgentMessage(role="user", content="hello")])
+    hooks = _GenerateHooks()
+    adapter = _CaptureRequestAdapter()
+    runtime = ModelRuntime(adapter=adapter)
+
+    response = runtime.generate(req, hooks=hooks)
+
+    assert response.content == '{"ok": true}'
+    assert hooks.before_called is True
+    assert hooks.after_called is True
+    assert adapter.captured_request is not None
+    assert adapter.captured_request.messages[-1].content == "hook_injected"
 
 

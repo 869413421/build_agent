@@ -8,11 +8,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agent_forge.components.protocol import AgentMessage, ToolCall
+from agent_forge.components.protocol import AgentMessage, ErrorInfo, ToolCall
 
 
 class ModelStats(BaseModel):
@@ -39,6 +39,7 @@ class ModelRequest(BaseModel):
     response_schema: dict[str, Any] | None = Field(default=None, description="期望的 JSON Schema 输出结构")
     tools: list[dict[str, Any]] | None = Field(default=None, description="可用工具列表")
     stream: bool = Field(default=False, description="是否流式返回")
+    request_id: str | None = Field(default=None, description="请求ID（可选，用于追踪流式事件）")
 
     def extra_kwargs(self) -> dict[str, Any]:
         """返回通过 `**kwargs` 透传的额外参数。"""
@@ -53,6 +54,49 @@ class ModelResponse(BaseModel):
     parsed_output: dict[str, Any] | None = Field(default=None, description="结构化解析结果")
     tool_calls: list[ToolCall] = Field(default_factory=list, description="模型决定的工具调用")
     stats: ModelStats = Field(default_factory=ModelStats, description="本次请求统计")
+
+
+ModelStreamEventType = Literal["start", "delta", "usage", "error", "end"]
+
+
+class ModelStreamEvent(BaseModel):
+    """Unified stream event shape for model runtime."""
+
+    event_type: ModelStreamEventType = Field(..., description="流式事件类型")
+    request_id: str = Field(..., min_length=1, description="请求ID")
+    sequence: int = Field(default=0, ge=0, description="事件序号（从0开始）")
+    delta: str | None = Field(default=None, description="增量文本（delta事件）")
+    content: str | None = Field(default=None, description="完整文本（end事件可选）")
+    stats: ModelStats | None = Field(default=None, description="统计信息（usage/end可带）")
+    error: ErrorInfo | None = Field(default=None, description="错误信息（error事件）")
+    timestamp_ms: int = Field(default=0, ge=0, description="事件时间戳（毫秒）")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="扩展字段")
+
+
+class ModelRuntimeHooks(Protocol):
+    """Extension hooks for pre/post process and stream events."""
+
+    def before_request(self, request: ModelRequest) -> ModelRequest:
+        """Called before adapter invocation."""
+
+    def on_stream_event(self, event: ModelStreamEvent) -> ModelStreamEvent:
+        """Called for each stream event."""
+
+    def after_response(self, response: ModelResponse) -> ModelResponse:
+        """Called after final response is built."""
+
+
+class NoopModelRuntimeHooks:
+    """Default no-op hooks implementation."""
+
+    def before_request(self, request: ModelRequest) -> ModelRequest:
+        return request
+
+    def on_stream_event(self, event: ModelStreamEvent) -> ModelStreamEvent:
+        return event
+
+    def after_response(self, response: ModelResponse) -> ModelResponse:
+        return response
 
 
 class ModelError(Exception):

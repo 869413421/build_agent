@@ -63,3 +63,12 @@
 34. [x] 已修复 `.env` BOM 导致的环境变量读取失败：代码层兼容 `utf-8-sig`，教程层改为无 BOM PowerShell 写法，并补充 BOM 失败场景排查命令。
 35. [x] 已修正 `response_format` 过于刚性的实现：支持通用透传 `response_format`，并在服务端不支持 `json_schema` 时自动降级 `json_object`；单测与第四章教程同步完成。
 36. [x] 已将 DeepSeek 教学脚本迁移到 `examples/model_runtime/deepseek_demo.py`，并移除 `apps` 下同名脚本；第四章路径与命令已同步。
+37. [x] 已按用户要求更新 `README.md`，新增课程索引表（01~04 章节链接 + 05~14 占位状态）。
+38. [x] 已完成 Model Runtime 流式能力实现（`stream_generate` + 结构化流事件 + hooks + 失败边界）。
+39. [x] 已新增并通过流式单测 `tests/unit/test_model_runtime_stream.py`，全量回归 `uv run pytest -q` 通过（23 passed）。
+40. [x] 已按“先代码后教程”更新第4章并保留原有内容不删减，新增重组主线入口。
+41. [x] `examples/model_runtime/deepseek_demo.py` 已支持 `--mode non-stream|stream|both`，可真实走通 DeepSeek 非流式与流式两条调用链。
+42. [x] 已新增 `tests/unit/test_deepseek_demo.py` 并通过回归，示例脚本核心函数具备自动化保护。
+43. [x] 第四章 `deepseek_demo.py` 对应教程代码与运行命令已同步双链路版本（含 Bash/PowerShell），且未删除既有教程内容。
+44. [x] `ModelRuntime.generate` 已支持 `hooks`（before/after），非流式与流式观测语义对齐。
+45. [x] 已新增非流式 hooks 回归测试并通过（`test_generate_should_call_hooks_for_non_stream`）。

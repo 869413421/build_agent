@@ -1,4 +1,98 @@
-﻿# 《从0到1工业级Agent框架打造》第四章：Model Runtime 真调用打通（OpenAI / DeepSeek）
+﻿## 本章重组说明（先代码，后教程）
+
+本章已按“先实现、后讲解”的方式重组，阅读顺序改为：
+
+1. 先看流式主线（`stream_generate` + 结构化事件）。
+2. 再看代码改动点（domain / adapter / runtime / stub / tests）。
+3. 最后回到本章原有完整内容（原内容保留，不删减）。
+
+这次新增的是通用运行时能力，不替换旧能力：
+
+- 保留 `ModelRuntime.generate(...)`
+- 新增 `ModelRuntime.stream_generate(...)`
+- `generate/stream_generate` 统一支持 `hooks.before_request(...)` 与 `hooks.after_response(...)`
+- 流式事件统一为：`start -> delta -> usage -> error -> end`
+
+## 本章主流程（重组后的“面”）
+
+```mermaid
+flowchart TD
+  A[调用方构造 ModelRequest] --> B[ModelRuntime.stream_generate]
+  B --> C[hooks.before_request]
+  C --> D[ProviderAdapter.generate_stream]
+  D --> E[start/delta/usage/error/end]
+  E --> F[hooks.on_stream_event]
+  F --> G[调用方消费事件]
+  G --> H[聚合最终 ModelResponse]
+  H --> I[hooks.after_response]
+```
+
+## 本章增量改动范围（这部分先看）
+
+- [src/agent_forge/components/model_runtime/domain/schemas.py](../../src/agent_forge/components/model_runtime/domain/schemas.py)
+- [src/agent_forge/components/model_runtime/infrastructure/adapters/base.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/base.py)
+- [src/agent_forge/components/model_runtime/application/runtime.py](../../src/agent_forge/components/model_runtime/application/runtime.py)
+- [src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py)
+- [tests/unit/test_model_runtime_stream.py](../../tests/unit/test_model_runtime_stream.py)
+
+## 增量实现步骤（重组后的“点”）
+
+### 1) 定义流式事件与 hooks 协议
+
+文件：[src/agent_forge/components/model_runtime/domain/schemas.py](../../src/agent_forge/components/model_runtime/domain/schemas.py)
+
+核心新增：
+
+- `ModelStreamEventType`
+- `ModelStreamEvent`
+- `ModelRuntimeHooks`
+- `NoopModelRuntimeHooks`
+- `ModelRequest.request_id`
+
+### 2) Adapter 层实现真实流式转换
+
+文件：[src/agent_forge/components/model_runtime/infrastructure/adapters/base.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/base.py)
+
+核心机制：
+
+1. `ProviderAdapter` 新增 `generate_stream(...)` 抽象接口。
+2. `OpenAICompatibleAdapter.generate_stream(...)` 统一产出 `start/delta/usage/error/end`。
+3. 异常统一映射为 `ModelError` 并落成 `error` 事件。
+4. `finally` 中关闭上游流对象，保证消费方提前中断也能收口资源。
+
+### 3) Runtime 层新增流式入口并接 hooks
+
+文件：[src/agent_forge/components/model_runtime/application/runtime.py](../../src/agent_forge/components/model_runtime/application/runtime.py)
+
+核心新增：
+
+1. `stream_generate(request, hooks=None, **kwargs)`
+2. 事件经过 `hooks.on_stream_event(...)` 后再交给调用方
+3. 结束后聚合 `last_stream_response`
+4. 非流式 `generate(request, hooks=None, **kwargs)` 也接入 hooks，保证观测语义对称
+
+### 4) Stub 与测试闭环
+
+文件：
+
+- [src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py)
+- [tests/unit/test_model_runtime_stream.py](../../tests/unit/test_model_runtime_stream.py)
+
+运行命令：
+
+```bash
+uv run pytest tests/unit/test_model_runtime.py tests/unit/test_model_runtime_stream.py tests/unit/test_deepseek_demo.py -q
+```
+
+```powershell
+uv run pytest tests/unit/test_model_runtime.py tests/unit/test_model_runtime_stream.py tests/unit/test_deepseek_demo.py -q
+```
+
+---
+
+> 下方为本章原有完整内容，已保留不删减；可以按上面的重组主线先学增量，再回看原文细节。
+
+# 《从0到1工业级Agent框架打造》第四章：Model Runtime 真调用打通（OpenAI / DeepSeek）
 
 ## 目标
 
@@ -1367,10 +1461,11 @@ New-Item -ItemType File -Force "examples\\model_runtime\\deepseek_demo.py" | Out
 文件：[examples/model_runtime/deepseek_demo.py](../../examples/model_runtime/deepseek_demo.py)
 
 ```python
-"""第 4 章 DeepSeek 真实调用演示。"""
+"""第 4 章 DeepSeek 真实调用演示（流式 + 非流式）。"""
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from typing import Any
@@ -1383,8 +1478,37 @@ from agent_forge.support.logging import get_logger
 logger = get_logger(__name__)
 
 
-def build_deepseek_request(user_input: str) -> ModelRequest:
-    """构建 DeepSeek 结构化输出请求。"""
+def _require_runtime(runtime: ModelRuntime | None) -> ModelRuntime:
+    """返回可用 runtime；未注入时创建真实 DeepSeek runtime。"""
+
+    # 1. 优先复用调用方注入的 runtime（便于测试与扩展）。
+    if runtime is not None:
+        return runtime
+
+    # 2. 真实调用前强校验密钥，避免到网络层才失败。
+    if not settings.deepseek_api_key:
+        raise RuntimeError("缺少 AF_DEEPSEEK_API_KEY，请先配置环境变量或 .env。")
+
+    # 3. 使用主线组件创建 runtime，确保示例链路与生产链路一致。
+    return ModelRuntime(adapter=DeepSeekAdapter(), max_retries=1)
+
+
+def build_deepseek_request(user_input: str, *, stream: bool) -> ModelRequest:
+    """构建 DeepSeek 请求对象。"""
+
+    # 1. 按模式区分输出约束：
+    #    - 非流式：要求 JSON 结构，便于教程中的结构化校验。
+    #    - 流式：以增量文本输出为主，不强制 JSON schema。
+    response_schema: dict[str, Any] | None = None
+    if not stream:
+        response_schema = {
+            "type": "object",
+            "properties": {
+                "answer": {"type": "string"},
+                "confidence": {"type": "number"},
+            },
+            "required": ["answer", "confidence"],
+        }
 
     return ModelRequest(
         messages=[AgentMessage(role="user", content=user_input)],
@@ -1392,55 +1516,109 @@ def build_deepseek_request(user_input: str) -> ModelRequest:
         temperature=0.2,
         max_tokens=512,
         timeout_ms=30000,
-        response_schema={
-            "type": "object",
-            "properties": {
-                "answer": {"type": "string"},
-                "confidence": {"type": "number"},
-            },
-            "required": ["answer", "confidence"],
-        },
+        stream=stream,
+        response_schema=response_schema,
     )
 
 
 def run_deepseek_once(user_input: str, runtime: ModelRuntime | None = None) -> dict[str, Any]:
-    """执行一次 DeepSeek 调用并返回标准化结果。"""
+    """执行一次 DeepSeek 非流式调用。"""
 
-    # 1. 确保 runtime 就绪；若未注入则创建真实 DeepSeek runtime。
-    if runtime is None:
-        if not settings.deepseek_api_key:
-            raise RuntimeError("缺少 AF_DEEPSEEK_API_KEY，请先配置环境变量。")
-        runtime = ModelRuntime(adapter=DeepSeekAdapter(), max_retries=1)
+    # 1. 准备 runtime 与请求。
+    active_runtime = _require_runtime(runtime)
+    request = build_deepseek_request(user_input, stream=False)
 
-    # 2. 构建统一请求对象，并声明结构化输出要求。
-    request = build_deepseek_request(user_input)
+    # 2. 走非流式主链路。
+    response = active_runtime.generate(request)
 
-    # 3. 执行 runtime 链路（Adapter 调用 + 可选自愈解析重试）。
-    response = runtime.generate(request)
-
-    # 4. 归一化输出，供 CLI 与下游模块复用。
+    # 3. 归一化结果，便于 CLI 与下游复用。
     result = {
+        "mode": "non-stream",
         "content": response.content,
         "parsed_output": response.parsed_output,
         "stats": response.stats.model_dump(),
     }
 
-    # 5. 记录一条紧凑摘要日志，便于排障。
     logger.info(
-        "deepseek_demo completed | total_tokens=%s latency_ms=%s",
+        "deepseek non-stream completed | total_tokens=%s latency_ms=%s",
         result["stats"]["total_tokens"],
         result["stats"]["latency_ms"],
     )
     return result
 
 
-def main(argv: list[str] | None = None) -> int:
-    """单次 DeepSeek runtime 演示的 CLI 入口。"""
+def run_deepseek_stream(user_input: str, runtime: ModelRuntime | None = None) -> dict[str, Any]:
+    """执行一次 DeepSeek 流式调用，并实时打印增量文本。"""
 
-    args = argv if argv is not None else sys.argv[1:]
-    prompt = args[0] if args else "请用一句话介绍你自己。"
-    result = run_deepseek_once(prompt)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    # 1. 准备 runtime 与流式请求。
+    active_runtime = _require_runtime(runtime)
+    request = build_deepseek_request(user_input, stream=True)
+
+    # 2. 消费流式事件并实时输出 delta。
+    full_text_parts: list[str] = []
+    for event in active_runtime.stream_generate(request):
+        if event.event_type == "delta" and event.delta:
+            full_text_parts.append(event.delta)
+            print(event.delta, end="", flush=True)
+
+    # 3. 统一换行，避免后续 JSON 输出粘连。
+    print()
+
+    # 4. 聚合最终响应（由 runtime 统一收敛）。
+    response = active_runtime.last_stream_response
+    if response is None:
+        content = "".join(full_text_parts)
+        stats: dict[str, Any] = {}
+    else:
+        content = response.content or "".join(full_text_parts)
+        stats = response.stats.model_dump()
+
+    result = {
+        "mode": "stream",
+        "content": content,
+        "stats": stats,
+    }
+    logger.info(
+        "deepseek stream completed | total_tokens=%s latency_ms=%s",
+        result["stats"].get("total_tokens"),
+        result["stats"].get("latency_ms"),
+    )
+    return result
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="DeepSeek runtime demo（流式 + 非流式）")
+    parser.add_argument(
+        "prompt",
+        nargs="?",
+        default="请给出一份劳动仲裁材料准备清单。",
+        help="用户输入问题",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["non-stream", "stream", "both"],
+        default="both",
+        help="运行模式：non-stream / stream / both",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI 入口。"""
+
+    args = parse_args(argv if argv is not None else sys.argv[1:])
+    output: dict[str, Any] = {"prompt": args.prompt, "mode": args.mode}
+
+    # 1. 非流式路径：验证结构化输出链路。
+    if args.mode in {"non-stream", "both"}:
+        output["non_stream"] = run_deepseek_once(args.prompt)
+
+    # 2. 流式路径：验证增量输出链路。
+    if args.mode in {"stream", "both"}:
+        output["stream"] = run_deepseek_stream(args.prompt)
+
+    # 3. 统一打印最终摘要结果（JSON）。
+    print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -1470,21 +1648,41 @@ AF_OPENAI_MODEL=gpt-4o-mini
 )
 ```
 
-再执行真实打通命令：
+再执行真实打通命令（非流式）：
 
 ```bash
-uv run python examples/model_runtime/deepseek_demo.py "请给出一份劳动仲裁材料准备清单"
+uv run python examples/model_runtime/deepseek_demo.py --mode non-stream "请给出一份劳动仲裁材料准备清单"
 ```
 
 ```powershell
-uv run python examples/model_runtime/deepseek_demo.py "请给出一份劳动仲裁材料准备清单"
+uv run python examples/model_runtime/deepseek_demo.py --mode non-stream "请给出一份劳动仲裁材料准备清单"
+```
+
+再执行真实打通命令（流式）：
+
+```bash
+uv run python examples/model_runtime/deepseek_demo.py --mode stream "请给出一份劳动仲裁材料准备清单"
+```
+
+```powershell
+uv run python examples/model_runtime/deepseek_demo.py --mode stream "请给出一份劳动仲裁材料准备清单"
+```
+
+一次性验证两条链路：
+
+```bash
+uv run python examples/model_runtime/deepseek_demo.py --mode both "请给出一份劳动仲裁材料准备清单"
+```
+
+```powershell
+uv run python examples/model_runtime/deepseek_demo.py --mode both "请给出一份劳动仲裁材料准备清单"
 ```
 
 手动验证标准：
 
-1. 终端输出是 JSON。
-2. 输出含 `content`、`parsed_output`、`stats`。
-3. `stats.total_tokens` > 0 且 `stats.latency_ms` > 0。
+1. `--mode non-stream` 输出含 `non_stream.parsed_output`。
+2. `--mode stream` 先打印增量文本，再输出总结 JSON。
+3. `--mode both` 同时包含 `non_stream` 与 `stream` 两个结果块。
 
 ### 第 7 步：主线一致性检查
 
@@ -1560,6 +1758,7 @@ $content = Get-Content .env -Raw
 ## 下一章预告
 
 下一章进入 Tool Runtime：把 Engine 的 `act` 从“模型调用”扩展为“模型 + 工具协同执行”，并建立工具调用的幂等、超时与错误语义。
+
 
 
 

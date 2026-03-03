@@ -8,8 +8,12 @@ from agent_forge.components.model_runtime.domain.schemas import (
     ModelRateLimitError,
     ModelRequest,
     ModelResponse,
+    ModelRuntimeHooks,
+    ModelStreamEvent,
+    ModelStreamEventType,
     ModelStats,
     ModelTimeoutError,
+    NoopModelRuntimeHooks,
 )
 from agent_forge.components.model_runtime.infrastructure.adapters import (
     DeepSeekAdapter,
@@ -30,6 +34,10 @@ __all__ = [
     "ModelRuntime",
     "ModelRequest",
     "ModelResponse",
+    "ModelStreamEvent",
+    "ModelStreamEventType",
+    "ModelRuntimeHooks",
+    "NoopModelRuntimeHooks",
     "ModelStats",
     "ModelError",
     "ModelParseError",

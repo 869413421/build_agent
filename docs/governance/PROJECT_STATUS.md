@@ -145,3 +145,13 @@
 48. 已修复 `.env` BOM 兼容问题：`src/agent_forge/support/config/settings.py` 改为 `load_dotenv(..., encoding=\"utf-8-sig\")` 且 `env_file_encoding=\"utf-8-sig\"`；第四章 PowerShell `.env` 创建命令改为无 BOM 写入，并新增 BOM 排查/重写步骤，避免 `\ufeffAF_DEEPSEEK_API_KEY` 读不到。
 49. 已将 `response_format` 调整为通用可透传策略：优先透传调用方传入的 `response_format`（如 `json_object`），未传入且存在 `response_schema` 时默认走 `json_schema`；若服务端返回 `response_format unavailable`，适配器自动降级为 `json_object` 再试一次。同步补充单测并更新第四章对应代码块与说明，复检通过。
 50. `model_runtime_deepseek_demo` 已从 `src/agent_forge/apps/` 迁移至 `examples/model_runtime/deepseek_demo.py`，第四章所有创建命令/文件路径/运行命令已同步到 `examples`，避免将教学脚本误归类为应用入口。
+
+51. README 已新增“课程索引（按章节）”，包含 01~04 章直达链接与 05~14 章状态占位，便于读者按章节导航与后续持续发布。
+52. Model Runtime 已完成流式能力：新增 `stream_generate` 与 `ModelStreamEvent(start/delta/usage/error/end)`，并保留 `generate` 兼容路径；同时落地最小 hooks（before_request/on_stream_event/after_response）与失败边界收尾语义。
+53. 已新增流式单测 `tests/unit/test_model_runtime_stream.py`，并完成回归验证：`uv run pytest -q` 通过（23 passed）。
+54. 第四章教程已完成“先代码后教程”的重组入口：新增流式主线与增量改动导航，且原有章节内容未删减。
+55. `examples/model_runtime/deepseek_demo.py` 已重写为真实双链路示例：新增 `--mode non-stream|stream|both`，同一脚本可分别验证结构化非流式与增量流式输出。
+56. 已新增 `tests/unit/test_deepseek_demo.py`，通过注入 `StubDeepSeekAdapter` 验证 `run_deepseek_once` 与 `run_deepseek_stream` 两条路径均可执行，避免示例脚本后续回归失效。
+57. 第四章教程中的 `deepseek_demo.py` 完整代码块与运行命令已同步为双链路版本（含 Bash/PowerShell 双命令），在不删除既有章节的前提下完成增量更新。
+58. 已补齐非流式可观测性对称性：`ModelRuntime.generate(request, hooks=None, **kwargs)` 现支持与流式一致的 `before_request/after_response` hooks 接入。
+59. 已新增单测覆盖非流式 hooks：`tests/unit/test_model_runtime.py::test_generate_should_call_hooks_for_non_stream`，验证 non-stream 也可注入观测逻辑。

@@ -9,10 +9,21 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
+from uuid import uuid4
 
 from agent_forge.components.model_runtime.infrastructure.adapters import ProviderAdapter
-from agent_forge.components.model_runtime.domain.schemas import ModelError, ModelParseError, ModelRequest, ModelResponse
+from agent_forge.components.model_runtime.domain.schemas import (
+    ModelError,
+    ModelParseError,
+    ModelRequest,
+    ModelResponse,
+    ModelRuntimeHooks,
+    ModelStreamEvent,
+    ModelStats,
+    NoopModelRuntimeHooks,
+)
 from agent_forge.components.protocol import AgentMessage
 from agent_forge.support.logging import get_logger
 
@@ -25,14 +36,22 @@ class ModelRuntime:
     def __init__(self, adapter: ProviderAdapter, max_retries: int = 2):
         self.adapter = adapter
         self.max_retries = max_retries
+        self.last_stream_response: ModelResponse | None = None
 
-    def generate(self, request: ModelRequest, **kwargs: Any) -> ModelResponse:
+    def generate(
+        self,
+        request: ModelRequest,
+        hooks: ModelRuntimeHooks | None = None,
+        **kwargs: Any,
+    ) -> ModelResponse:
         """执行带防御控制的生成流程。"""
+
+        active_hooks = hooks or NoopModelRuntimeHooks()
 
         # 1. 记录初始系统请求信息
         attempt = 0
         last_error: Exception | None = None
-        current_request = request.model_copy(deep=True)
+        current_request = active_hooks.before_request(request.model_copy(deep=True))
 
         # 2. 进入带重试机制的调用循环
         while attempt <= self.max_retries:
@@ -42,7 +61,7 @@ class ModelRuntime:
 
                 # 4. 如果没有结构化输出要求，直接返回
                 if not current_request.response_schema:
-                    return response
+                    return active_hooks.after_response(response)
 
                 # 5. 尝试将返回的字符串解析为结构化 JSON
                 # 实际生产中可能需要配合 Pydantic model_validate
@@ -53,7 +72,7 @@ class ModelRuntime:
                     self._validate_against_schema(parsed_data, current_request.response_schema)
                     
                     response.parsed_output = parsed_data
-                    return response
+                    return active_hooks.after_response(response)
 
                 except json.JSONDecodeError as json_exc:
                     raise ModelParseError(f"JSON 格式非法: {json_exc}", raw_content=response.content) from json_exc
@@ -86,6 +105,56 @@ class ModelRuntime:
 
         # 若达到上限依然退出，提供兜底防范。由于逻辑上有 `if attempt >= max_retries: raise` 保护，原则上这里不会触达。
         raise last_error or RuntimeError("模型循环执行异常到达不可能分支")
+
+    def stream_generate(
+        self,
+        request: ModelRequest,
+        hooks: ModelRuntimeHooks | None = None,
+        **kwargs: Any,
+    ) -> Iterator[ModelStreamEvent]:
+        """Run streaming generation and emit normalized events."""
+
+        active_hooks = hooks or NoopModelRuntimeHooks()
+        prepared = request.model_copy(deep=True)
+        if not prepared.request_id:
+            prepared.request_id = f"req_{uuid4().hex}"
+        prepared = active_hooks.before_request(prepared)
+
+        stream_iter = self.adapter.generate_stream(prepared, **kwargs)
+        full_parts: list[str] = []
+        final_stats: ModelStats | None = None
+        final_content = ""
+
+        try:
+            for event in stream_iter:
+                patched = active_hooks.on_stream_event(event)
+                if patched.event_type == "delta" and patched.delta:
+                    full_parts.append(patched.delta)
+                if patched.event_type == "usage" and patched.stats:
+                    final_stats = patched.stats
+                if patched.event_type == "end":
+                    if patched.content is not None:
+                        final_content = patched.content
+                    if patched.stats is not None:
+                        final_stats = patched.stats
+                yield patched
+        finally:
+            closer = getattr(stream_iter, "close", None)
+            if callable(closer):
+                closer()
+
+        if not final_content:
+            final_content = "".join(full_parts)
+        response = ModelResponse(
+            content=final_content,
+            stats=final_stats or ModelStats(),
+        )
+        if prepared.response_schema and response.content:
+            parsed_data = self._parse_json(response.content)
+            self._validate_against_schema(parsed_data, prepared.response_schema)
+            response.parsed_output = parsed_data
+
+        self.last_stream_response = active_hooks.after_response(response)
 
     def _parse_json(self, raw_content: str) -> dict[str, Any]:
         """清理 markdown code block 并解析 JSON。"""
