@@ -155,3 +155,7 @@
 57. 第四章教程中的 `deepseek_demo.py` 完整代码块与运行命令已同步为双链路版本（含 Bash/PowerShell 双命令），在不删除既有章节的前提下完成增量更新。
 58. 已补齐非流式可观测性对称性：`ModelRuntime.generate(request, hooks=None, **kwargs)` 现支持与流式一致的 `before_request/after_response` hooks 接入。
 59. 已新增单测覆盖非流式 hooks：`tests/unit/test_model_runtime.py::test_generate_should_call_hooks_for_non_stream`，验证 non-stream 也可注入观测逻辑。
+60. 第四章教程已按“面向读者从0到1”整章重写：移除补丁式重组前言，改为目标->架构->前置->实施步骤->运行命令->验证清单->常见问题->DoD->下一章预告的单线教学结构。
+61. 第四章关键代码块已从主线文件自动同步并通过代码一致性检查（文件标记后的代码块与仓库真实文件逐项比对通过），满足“完整代码、无代码漂移”要求。
+62. 已修复第四章教程乱码问题：回滚到 Git 中 UTF-8 原文后再重排章节入口，避免 PowerShell 编码页导致的“?”污染。
+63. 第四章已按读者视角从章节标题直接进入正文（移除“重组说明”前言），并保持全部代码块与主线文件一致（无代码漂移）。

@@ -1,97 +1,3 @@
-﻿## 本章重组说明（先代码，后教程）
-
-本章已按“先实现、后讲解”的方式重组，阅读顺序改为：
-
-1. 先看流式主线（`stream_generate` + 结构化事件）。
-2. 再看代码改动点（domain / adapter / runtime / stub / tests）。
-3. 最后回到本章原有完整内容（原内容保留，不删减）。
-
-这次新增的是通用运行时能力，不替换旧能力：
-
-- 保留 `ModelRuntime.generate(...)`
-- 新增 `ModelRuntime.stream_generate(...)`
-- `generate/stream_generate` 统一支持 `hooks.before_request(...)` 与 `hooks.after_response(...)`
-- 流式事件统一为：`start -> delta -> usage -> error -> end`
-
-## 本章主流程（重组后的“面”）
-
-```mermaid
-flowchart TD
-  A[调用方构造 ModelRequest] --> B[ModelRuntime.stream_generate]
-  B --> C[hooks.before_request]
-  C --> D[ProviderAdapter.generate_stream]
-  D --> E[start/delta/usage/error/end]
-  E --> F[hooks.on_stream_event]
-  F --> G[调用方消费事件]
-  G --> H[聚合最终 ModelResponse]
-  H --> I[hooks.after_response]
-```
-
-## 本章增量改动范围（这部分先看）
-
-- [src/agent_forge/components/model_runtime/domain/schemas.py](../../src/agent_forge/components/model_runtime/domain/schemas.py)
-- [src/agent_forge/components/model_runtime/infrastructure/adapters/base.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/base.py)
-- [src/agent_forge/components/model_runtime/application/runtime.py](../../src/agent_forge/components/model_runtime/application/runtime.py)
-- [src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py)
-- [tests/unit/test_model_runtime_stream.py](../../tests/unit/test_model_runtime_stream.py)
-
-## 增量实现步骤（重组后的“点”）
-
-### 1) 定义流式事件与 hooks 协议
-
-文件：[src/agent_forge/components/model_runtime/domain/schemas.py](../../src/agent_forge/components/model_runtime/domain/schemas.py)
-
-核心新增：
-
-- `ModelStreamEventType`
-- `ModelStreamEvent`
-- `ModelRuntimeHooks`
-- `NoopModelRuntimeHooks`
-- `ModelRequest.request_id`
-
-### 2) Adapter 层实现真实流式转换
-
-文件：[src/agent_forge/components/model_runtime/infrastructure/adapters/base.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/base.py)
-
-核心机制：
-
-1. `ProviderAdapter` 新增 `generate_stream(...)` 抽象接口。
-2. `OpenAICompatibleAdapter.generate_stream(...)` 统一产出 `start/delta/usage/error/end`。
-3. 异常统一映射为 `ModelError` 并落成 `error` 事件。
-4. `finally` 中关闭上游流对象，保证消费方提前中断也能收口资源。
-
-### 3) Runtime 层新增流式入口并接 hooks
-
-文件：[src/agent_forge/components/model_runtime/application/runtime.py](../../src/agent_forge/components/model_runtime/application/runtime.py)
-
-核心新增：
-
-1. `stream_generate(request, hooks=None, **kwargs)`
-2. 事件经过 `hooks.on_stream_event(...)` 后再交给调用方
-3. 结束后聚合 `last_stream_response`
-4. 非流式 `generate(request, hooks=None, **kwargs)` 也接入 hooks，保证观测语义对称
-
-### 4) Stub 与测试闭环
-
-文件：
-
-- [src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py)
-- [tests/unit/test_model_runtime_stream.py](../../tests/unit/test_model_runtime_stream.py)
-
-运行命令：
-
-```bash
-uv run pytest tests/unit/test_model_runtime.py tests/unit/test_model_runtime_stream.py tests/unit/test_deepseek_demo.py -q
-```
-
-```powershell
-uv run pytest tests/unit/test_model_runtime.py tests/unit/test_model_runtime_stream.py tests/unit/test_deepseek_demo.py -q
-```
-
----
-
-> 下方为本章原有完整内容，已保留不删减；可以按上面的重组主线先学增量，再回看原文细节。
-
 # 《从0到1工业级Agent框架打造》第四章：Model Runtime 真调用打通（OpenAI / DeepSeek）
 
 ## 目标
@@ -186,6 +92,14 @@ flowchart TD
 
 ### 本章涉及的真实文件
 
+```bash
+touch src/agent_forge/support/config/settings.py
+```
+
+```powershell
+New-Item -ItemType File -Force "src\\agent_forge\\support\\config\\settings.py" | Out-Null
+```
+
 - [src/agent_forge/support/config/settings.py](../../src/agent_forge/support/config/settings.py)
 - [src/agent_forge/support/logging/logger.py](../../src/agent_forge/support/logging/logger.py)
 - [src/agent_forge/components/model_runtime/__init__.py](../../src/agent_forge/components/model_runtime/__init__.py)
@@ -208,6 +122,45 @@ flowchart TD
 ### 第 1 步：先前置 support（config + logging）
 
 创建命令：
+
+```python
+﻿"""统一配置模块（辅助能力，不纳入 core 主干）。"""
+
+from __future__ import annotations
+
+from dotenv import load_dotenv
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 1. 在导入阶段加载 .env，兼容 UTF-8 BOM（Windows PowerShell 常见）。
+load_dotenv(override=False, encoding="utf-8-sig")
+
+
+class AppConfig(BaseSettings):
+    """应用配置单一事实源。"""
+
+    environment: str = Field(default="development", description="运行环境")
+    debug: bool = Field(default=False, description="是否开启调试")
+    log_level: str = Field(default="INFO", description="日志级别")
+
+    openai_api_key: str | None = Field(default=None, description="OpenAI API Key")
+    deepseek_api_key: str | None = Field(default=None, description="DeepSeek API Key")
+    openai_base_url: str = Field(default="https://api.openai.com/v1", description="OpenAI Base URL")
+    deepseek_base_url: str = Field(default="https://api.deepseek.com/v1", description="DeepSeek Base URL")
+    openai_model: str = Field(default="gpt-4o-mini", description="OpenAI 默认模型")
+    deepseek_model: str = Field(default="deepseek-chat", description="DeepSeek 默认模型")
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8-sig",
+        env_prefix="AF_",
+        extra="ignore",
+    )
+
+
+# 2. 全局单例，供 Adapter/Runtime 等读取配置。
+settings = AppConfig()
+```
 
 ```bash
 touch src/agent_forge/support/__init__.py
@@ -332,7 +285,7 @@ New-Item -ItemType File -Force "src\\agent_forge\\support\\logging\\logger.py" |
 文件：[src/agent_forge/support/logging/logger.py](../../src/agent_forge/support/logging/logger.py)
 
 ```python
-"""统一日志模块（辅助能力，不纳入 core 主干）。"""
+﻿"""统一日志模块（辅助能力，不纳入 core 主干）。"""
 
 from __future__ import annotations
 
@@ -392,7 +345,7 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\model_runtime\\dom
 文件：[src/agent_forge/components/model_runtime/domain/schemas.py](../../src/agent_forge/components/model_runtime/domain/schemas.py)
 
 ```python
-"""Model 组件（大模型契约层）。
+﻿"""Model 组件（大模型契约层）。
 
 目标：
 1. 统一请求与响应结构，屏蔽底层厂商差异。
@@ -402,11 +355,11 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\model_runtime\\dom
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agent_forge.components.protocol import AgentMessage, ToolCall
+from agent_forge.components.protocol import AgentMessage, ErrorInfo, ToolCall
 
 
 class ModelStats(BaseModel):
@@ -433,6 +386,7 @@ class ModelRequest(BaseModel):
     response_schema: dict[str, Any] | None = Field(default=None, description="期望的 JSON Schema 输出结构")
     tools: list[dict[str, Any]] | None = Field(default=None, description="可用工具列表")
     stream: bool = Field(default=False, description="是否流式返回")
+    request_id: str | None = Field(default=None, description="请求ID（可选，用于追踪流式事件）")
 
     def extra_kwargs(self) -> dict[str, Any]:
         """返回通过 `**kwargs` 透传的额外参数。"""
@@ -447,6 +401,49 @@ class ModelResponse(BaseModel):
     parsed_output: dict[str, Any] | None = Field(default=None, description="结构化解析结果")
     tool_calls: list[ToolCall] = Field(default_factory=list, description="模型决定的工具调用")
     stats: ModelStats = Field(default_factory=ModelStats, description="本次请求统计")
+
+
+ModelStreamEventType = Literal["start", "delta", "usage", "error", "end"]
+
+
+class ModelStreamEvent(BaseModel):
+    """Unified stream event shape for model runtime."""
+
+    event_type: ModelStreamEventType = Field(..., description="流式事件类型")
+    request_id: str = Field(..., min_length=1, description="请求ID")
+    sequence: int = Field(default=0, ge=0, description="事件序号（从0开始）")
+    delta: str | None = Field(default=None, description="增量文本（delta事件）")
+    content: str | None = Field(default=None, description="完整文本（end事件可选）")
+    stats: ModelStats | None = Field(default=None, description="统计信息（usage/end可带）")
+    error: ErrorInfo | None = Field(default=None, description="错误信息（error事件）")
+    timestamp_ms: int = Field(default=0, ge=0, description="事件时间戳（毫秒）")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="扩展字段")
+
+
+class ModelRuntimeHooks(Protocol):
+    """Extension hooks for pre/post process and stream events."""
+
+    def before_request(self, request: ModelRequest) -> ModelRequest:
+        """Called before adapter invocation."""
+
+    def on_stream_event(self, event: ModelStreamEvent) -> ModelStreamEvent:
+        """Called for each stream event."""
+
+    def after_response(self, response: ModelResponse) -> ModelResponse:
+        """Called after final response is built."""
+
+
+class NoopModelRuntimeHooks:
+    """Default no-op hooks implementation."""
+
+    def before_request(self, request: ModelRequest) -> ModelRequest:
+        return request
+
+    def on_stream_event(self, event: ModelStreamEvent) -> ModelStreamEvent:
+        return event
+
+    def after_response(self, response: ModelResponse) -> ModelResponse:
+        return response
 
 
 class ModelError(Exception):
@@ -509,13 +506,21 @@ from .schemas import (
     ModelRateLimitError,
     ModelRequest,
     ModelResponse,
+    ModelRuntimeHooks,
+    ModelStreamEvent,
+    ModelStreamEventType,
     ModelStats,
     ModelTimeoutError,
+    NoopModelRuntimeHooks,
 )
 
 __all__ = [
     "ModelRequest",
     "ModelResponse",
+    "ModelStreamEvent",
+    "ModelStreamEventType",
+    "ModelRuntimeHooks",
+    "NoopModelRuntimeHooks",
     "ModelStats",
     "ModelError",
     "ModelParseError",
@@ -574,7 +579,7 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\model_runtime\\inf
 文件：[src/agent_forge/components/model_runtime/infrastructure/adapters/__init__.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/__init__.py)
 
 ```python
-"""模型适配器导出。"""
+﻿"""模型适配器导出。"""
 
 from .base import OpenAICompatibleAdapter, ProviderAdapter
 from .deepseek_adapter import DeepSeekAdapter
@@ -604,13 +609,14 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\model_runtime\\inf
 文件：[src/agent_forge/components/model_runtime/infrastructure/adapters/base.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/base.py)
 
 ```python
-"""Provider 适配器抽象与通用实现。"""
+﻿"""Provider 适配器抽象与通用实现。"""
 
 from __future__ import annotations
 
 import json
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from typing import Any
 
 import openai
@@ -621,10 +627,11 @@ from agent_forge.components.model_runtime.domain.schemas import (
     ModelRateLimitError,
     ModelRequest,
     ModelResponse,
+    ModelStreamEvent,
     ModelStats,
     ModelTimeoutError,
 )
-from agent_forge.components.protocol import ToolCall
+from agent_forge.components.protocol import ErrorInfo, ToolCall
 from agent_forge.support.logging import get_logger
 
 logger = get_logger(__name__)
@@ -636,6 +643,11 @@ class ProviderAdapter(ABC):
     @abstractmethod
     def generate(self, request: ModelRequest, **kwargs: Any) -> ModelResponse:
         """执行模型调用。"""
+        raise NotImplementedError
+
+    @abstractmethod
+    def generate_stream(self, request: ModelRequest, **kwargs: Any) -> Iterator[ModelStreamEvent]:
+        """执行流式模型调用。"""
         raise NotImplementedError
 
 
@@ -700,6 +712,93 @@ class OpenAICompatibleAdapter(ProviderAdapter):
             ),
         )
 
+    def generate_stream(self, request: ModelRequest, **kwargs: Any) -> Iterator[ModelStreamEvent]:
+        request_id = request.request_id or kwargs.get("request_id") or f"req_{int(time.time() * 1000)}"
+        payload = self._build_payload(request, stream=True, **kwargs)
+        seq = 0
+        start_ms = int(time.time() * 1000)
+        started_at = time.monotonic()
+        full_parts: list[str] = []
+        stats = ModelStats()
+        stream_obj: Any | None = None
+
+        yield ModelStreamEvent(
+            event_type="start",
+            request_id=request_id,
+            sequence=seq,
+            timestamp_ms=start_ms,
+            metadata={"provider": self.provider_name},
+        )
+        seq += 1
+
+        try:
+            stream_obj = self.client.chat.completions.create(**payload)
+            for chunk in stream_obj:
+                delta = self._extract_delta_content(chunk)
+                if delta:
+                    full_parts.append(delta)
+                    yield ModelStreamEvent(
+                        event_type="delta",
+                        request_id=request_id,
+                        sequence=seq,
+                        delta=delta,
+                        timestamp_ms=int(time.time() * 1000),
+                    )
+                    seq += 1
+                usage = self._extract_usage(chunk)
+                if usage:
+                    stats = usage
+        except Exception as exc:  # noqa: BLE001
+            model_error = self._to_model_error(exc)
+            elapsed_ms = int((time.monotonic() - started_at) * 1000)
+            stats.latency_ms = elapsed_ms
+            yield ModelStreamEvent(
+                event_type="error",
+                request_id=request_id,
+                sequence=seq,
+                timestamp_ms=int(time.time() * 1000),
+                stats=stats,
+                error=ErrorInfo(
+                    error_code=model_error.error_code,
+                    error_message=model_error.message,
+                    retryable=model_error.retryable,
+                ),
+            )
+            seq += 1
+            yield ModelStreamEvent(
+                event_type="end",
+                request_id=request_id,
+                sequence=seq,
+                content="".join(full_parts),
+                stats=stats,
+                timestamp_ms=int(time.time() * 1000),
+                metadata={"status": "error"},
+            )
+            return
+        finally:
+            closer = getattr(stream_obj, "close", None)
+            if callable(closer):
+                closer()
+
+        stats.latency_ms = int((time.monotonic() - started_at) * 1000)
+        yield ModelStreamEvent(
+            event_type="usage",
+            request_id=request_id,
+            sequence=seq,
+            stats=stats,
+            timestamp_ms=int(time.time() * 1000),
+        )
+        seq += 1
+        yield ModelStreamEvent(
+            event_type="end",
+            request_id=request_id,
+            sequence=seq,
+            content="".join(full_parts),
+            stats=stats,
+            timestamp_ms=int(time.time() * 1000),
+            metadata={"status": "ok"},
+        )
+
     def _build_payload(self, request: ModelRequest, **kwargs: Any) -> dict[str, Any]:
         messages: list[dict[str, Any]] = []
         if request.system_prompt:
@@ -721,6 +820,7 @@ class OpenAICompatibleAdapter(ProviderAdapter):
         merged_kwargs: dict[str, Any] = {}
         merged_kwargs.update(request.extra_kwargs())
         merged_kwargs.update(kwargs)
+        merged_kwargs.pop("request_id", None)
 
         response_format = merged_kwargs.pop("response_format", None)
         if request.response_schema:
@@ -785,6 +885,63 @@ class OpenAICompatibleAdapter(ProviderAdapter):
                     )
                 )
         return tool_calls
+
+    def _to_model_error(self, exc: Exception) -> ModelError:
+        if isinstance(exc, ModelError):
+            return exc
+        if isinstance(exc, openai.AuthenticationError):
+            return ModelAuthenticationError(str(exc))
+        if isinstance(exc, openai.RateLimitError):
+            return ModelRateLimitError(str(exc))
+        if isinstance(exc, openai.APITimeoutError):
+            return ModelTimeoutError(str(exc))
+        if isinstance(exc, openai.OpenAIError):
+            return ModelError(
+                error_code=f"{self.provider_name.upper()}_ERROR",
+                message=str(exc),
+                retryable=True,
+            )
+        return ModelError(
+            error_code=f"{self.provider_name.upper()}_STREAM_ERROR",
+            message=str(exc),
+            retryable=False,
+        )
+
+    def _extract_delta_content(self, chunk: Any) -> str:
+        choices = getattr(chunk, "choices", None)
+        if not choices and isinstance(chunk, dict):
+            choices = chunk.get("choices")
+        if not choices:
+            return ""
+
+        first = choices[0]
+        delta = getattr(first, "delta", None)
+        if delta is None and isinstance(first, dict):
+            delta = first.get("delta")
+
+        content = getattr(delta, "content", None) if delta is not None else None
+        if content is None and isinstance(delta, dict):
+            content = delta.get("content")
+        return content or ""
+
+    def _extract_usage(self, chunk: Any) -> ModelStats | None:
+        usage = getattr(chunk, "usage", None)
+        if usage is None and isinstance(chunk, dict):
+            usage = chunk.get("usage")
+        if usage is None:
+            return None
+        prompt_tokens = getattr(usage, "prompt_tokens", None)
+        completion_tokens = getattr(usage, "completion_tokens", None)
+        total_tokens = getattr(usage, "total_tokens", None)
+        if isinstance(usage, dict):
+            prompt_tokens = usage.get("prompt_tokens")
+            completion_tokens = usage.get("completion_tokens")
+            total_tokens = usage.get("total_tokens")
+        return ModelStats(
+            prompt_tokens=prompt_tokens or 0,
+            completion_tokens=completion_tokens or 0,
+            total_tokens=total_tokens or 0,
+        )
 ```
 
 关键点：
@@ -808,7 +965,7 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\model_runtime\\inf
 文件：[src/agent_forge/components/model_runtime/infrastructure/adapters/openai_adapter.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/openai_adapter.py)  
 
 ```python
-"""OpenAI 真实适配器实现。"""
+﻿"""OpenAI 真实适配器实现。"""
 
 from __future__ import annotations
 
@@ -845,7 +1002,7 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\model_runtime\\inf
 文件：[src/agent_forge/components/model_runtime/infrastructure/adapters/deepseek_adapter.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/deepseek_adapter.py)
 
 ```python
-"""DeepSeek 真实适配器实现。"""
+﻿"""DeepSeek 真实适配器实现。"""
 
 from __future__ import annotations
 
@@ -899,7 +1056,7 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\model_runtime\\app
 文件：[src/agent_forge/components/model_runtime/application/__init__.py](../../src/agent_forge/components/model_runtime/application/__init__.py)
 
 ```python
-"""Model runtime application exports."""
+﻿"""Model runtime application exports."""
 
 from .runtime import ModelRuntime
 
@@ -919,7 +1076,7 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\model_runtime\\app
 文件：[src/agent_forge/components/model_runtime/application/runtime.py](../../src/agent_forge/components/model_runtime/application/runtime.py)
 
 ```python
-"""Model Runtime 组件（防崩塌控制层）。
+﻿"""Model Runtime 组件（防崩塌控制层）。
 
 主要能力：
 1. 依赖注入调度不同的 Adapter
@@ -930,10 +1087,21 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\model_runtime\\app
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
+from uuid import uuid4
 
 from agent_forge.components.model_runtime.infrastructure.adapters import ProviderAdapter
-from agent_forge.components.model_runtime.domain.schemas import ModelError, ModelParseError, ModelRequest, ModelResponse
+from agent_forge.components.model_runtime.domain.schemas import (
+    ModelError,
+    ModelParseError,
+    ModelRequest,
+    ModelResponse,
+    ModelRuntimeHooks,
+    ModelStreamEvent,
+    ModelStats,
+    NoopModelRuntimeHooks,
+)
 from agent_forge.components.protocol import AgentMessage
 from agent_forge.support.logging import get_logger
 
@@ -946,14 +1114,22 @@ class ModelRuntime:
     def __init__(self, adapter: ProviderAdapter, max_retries: int = 2):
         self.adapter = adapter
         self.max_retries = max_retries
+        self.last_stream_response: ModelResponse | None = None
 
-    def generate(self, request: ModelRequest, **kwargs: Any) -> ModelResponse:
+    def generate(
+        self,
+        request: ModelRequest,
+        hooks: ModelRuntimeHooks | None = None,
+        **kwargs: Any,
+    ) -> ModelResponse:
         """执行带防御控制的生成流程。"""
+
+        active_hooks = hooks or NoopModelRuntimeHooks()
 
         # 1. 记录初始系统请求信息
         attempt = 0
         last_error: Exception | None = None
-        current_request = request.model_copy(deep=True)
+        current_request = active_hooks.before_request(request.model_copy(deep=True))
 
         # 2. 进入带重试机制的调用循环
         while attempt <= self.max_retries:
@@ -963,7 +1139,7 @@ class ModelRuntime:
 
                 # 4. 如果没有结构化输出要求，直接返回
                 if not current_request.response_schema:
-                    return response
+                    return active_hooks.after_response(response)
 
                 # 5. 尝试将返回的字符串解析为结构化 JSON
                 # 实际生产中可能需要配合 Pydantic model_validate
@@ -974,7 +1150,7 @@ class ModelRuntime:
                     self._validate_against_schema(parsed_data, current_request.response_schema)
                     
                     response.parsed_output = parsed_data
-                    return response
+                    return active_hooks.after_response(response)
 
                 except json.JSONDecodeError as json_exc:
                     raise ModelParseError(f"JSON 格式非法: {json_exc}", raw_content=response.content) from json_exc
@@ -1007,6 +1183,56 @@ class ModelRuntime:
 
         # 若达到上限依然退出，提供兜底防范。由于逻辑上有 `if attempt >= max_retries: raise` 保护，原则上这里不会触达。
         raise last_error or RuntimeError("模型循环执行异常到达不可能分支")
+
+    def stream_generate(
+        self,
+        request: ModelRequest,
+        hooks: ModelRuntimeHooks | None = None,
+        **kwargs: Any,
+    ) -> Iterator[ModelStreamEvent]:
+        """Run streaming generation and emit normalized events."""
+
+        active_hooks = hooks or NoopModelRuntimeHooks()
+        prepared = request.model_copy(deep=True)
+        if not prepared.request_id:
+            prepared.request_id = f"req_{uuid4().hex}"
+        prepared = active_hooks.before_request(prepared)
+
+        stream_iter = self.adapter.generate_stream(prepared, **kwargs)
+        full_parts: list[str] = []
+        final_stats: ModelStats | None = None
+        final_content = ""
+
+        try:
+            for event in stream_iter:
+                patched = active_hooks.on_stream_event(event)
+                if patched.event_type == "delta" and patched.delta:
+                    full_parts.append(patched.delta)
+                if patched.event_type == "usage" and patched.stats:
+                    final_stats = patched.stats
+                if patched.event_type == "end":
+                    if patched.content is not None:
+                        final_content = patched.content
+                    if patched.stats is not None:
+                        final_stats = patched.stats
+                yield patched
+        finally:
+            closer = getattr(stream_iter, "close", None)
+            if callable(closer):
+                closer()
+
+        if not final_content:
+            final_content = "".join(full_parts)
+        response = ModelResponse(
+            content=final_content,
+            stats=final_stats or ModelStats(),
+        )
+        if prepared.response_schema and response.content:
+            parsed_data = self._parse_json(response.content)
+            self._validate_against_schema(parsed_data, prepared.response_schema)
+            response.parsed_output = parsed_data
+
+        self.last_stream_response = active_hooks.after_response(response)
 
     def _parse_json(self, raw_content: str) -> dict[str, Any]:
         """清理 markdown code block 并解析 JSON。"""
@@ -1045,6 +1271,236 @@ class ModelRuntime:
 3. 边界：`max_retries` 只是上限，不保证一定成功。
 4. 失败模式：不做 deep copy 会污染调用方传入 request。
 
+### 第 4.5 步：完整搭建 model_runtime 导出与存根文件
+
+这一节继续完成 `model_runtime` 目录中的导出层与离线存根实现，按顺序创建并填写后即可直接运行，测试使用。
+
+创建命令：
+
+```bash
+touch src/agent_forge/components/model_runtime/__init__.py
+```
+
+```powershell
+New-Item -ItemType File -Force "src\\agent_forge\\components\\model_runtime\\__init__.py" | Out-Null
+```
+
+文件：[src/agent_forge/components/model_runtime/__init__.py](../../src/agent_forge/components/model_runtime/__init__.py)
+
+```python
+﻿"""Model runtime component exports."""
+
+from agent_forge.components.model_runtime.application.runtime import ModelRuntime
+from agent_forge.components.model_runtime.domain.schemas import (
+    ModelAuthenticationError,
+    ModelError,
+    ModelParseError,
+    ModelRateLimitError,
+    ModelRequest,
+    ModelResponse,
+    ModelRuntimeHooks,
+    ModelStreamEvent,
+    ModelStreamEventType,
+    ModelStats,
+    ModelTimeoutError,
+    NoopModelRuntimeHooks,
+)
+from agent_forge.components.model_runtime.infrastructure.adapters import (
+    DeepSeekAdapter,
+    OpenAIAdapter,
+    OpenAICompatibleAdapter,
+    ProviderAdapter,
+    StubDeepSeekAdapter,
+    StubOpenAIAdapter,
+)
+
+__all__ = [
+    "ProviderAdapter",
+    "OpenAICompatibleAdapter",
+    "OpenAIAdapter",
+    "DeepSeekAdapter",
+    "StubDeepSeekAdapter",
+    "StubOpenAIAdapter",
+    "ModelRuntime",
+    "ModelRequest",
+    "ModelResponse",
+    "ModelStreamEvent",
+    "ModelStreamEventType",
+    "ModelRuntimeHooks",
+    "NoopModelRuntimeHooks",
+    "ModelStats",
+    "ModelError",
+    "ModelParseError",
+    "ModelTimeoutError",
+    "ModelRateLimitError",
+    "ModelAuthenticationError",
+]
+```
+
+创建命令：
+
+```bash
+touch src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py
+```
+
+```powershell
+New-Item -ItemType File -Force "src\\agent_forge\\components\\model_runtime\\infrastructure\\adapters\\stub.py" | Out-Null
+```
+
+文件：[src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py)
+
+```python
+﻿"""离线测试用适配器。"""
+
+from __future__ import annotations
+
+import time
+from collections.abc import Iterator
+
+from agent_forge.components.model_runtime.infrastructure.adapters.base import ProviderAdapter
+from agent_forge.components.model_runtime.domain.schemas import ModelRequest, ModelResponse, ModelStats, ModelStreamEvent
+
+
+class StubOpenAIAdapter(ProviderAdapter):
+    """OpenAI 存根实现（用于测试和示例）。"""
+
+    def __init__(self, mock_response: str | None = None, mock_cost_per_1k: float = 0.002):
+        self.mock_response = mock_response or '{"status": "ok", "message": "hello from openai"}'
+        self.mock_cost_per_1k = mock_cost_per_1k
+
+    def generate(self, request: ModelRequest, **kwargs: object) -> ModelResponse:
+        # 1. 模拟生成延迟与 成本
+        prompt_t = 100
+        completion_t = 50
+        cost = ((prompt_t + completion_t) / 1000.0) * self.mock_cost_per_1k
+        # 2. 返回标准化响应
+        return ModelResponse(
+            content=self.mock_response,
+            stats=ModelStats(
+                prompt_tokens=prompt_t,
+                completion_tokens=completion_t,
+                total_tokens=prompt_t + completion_t,
+                latency_ms=150,
+                cost_usd=cost,
+            ),
+        )
+
+    def generate_stream(self, request: ModelRequest, **kwargs: object) -> Iterator[ModelStreamEvent]:
+        request_id = request.request_id or f"req_stub_{int(time.time() * 1000)}"
+        seq = 0
+        now_ms = int(time.time() * 1000)
+        yield ModelStreamEvent(event_type="start", request_id=request_id, sequence=seq, timestamp_ms=now_ms)
+        seq += 1
+
+        chunk_size = 8
+        for idx in range(0, len(self.mock_response), chunk_size):
+            part = self.mock_response[idx : idx + chunk_size]
+            yield ModelStreamEvent(
+                event_type="delta",
+                request_id=request_id,
+                sequence=seq,
+                delta=part,
+                timestamp_ms=int(time.time() * 1000),
+            )
+            seq += 1
+
+        stats = ModelStats(
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            latency_ms=150,
+            cost_usd=((100 + 50) / 1000.0) * self.mock_cost_per_1k,
+        )
+        yield ModelStreamEvent(
+            event_type="usage",
+            request_id=request_id,
+            sequence=seq,
+            stats=stats,
+            timestamp_ms=int(time.time() * 1000),
+        )
+        seq += 1
+        yield ModelStreamEvent(
+            event_type="end",
+            request_id=request_id,
+            sequence=seq,
+            content=self.mock_response,
+            stats=stats,
+            timestamp_ms=int(time.time() * 1000),
+            metadata={"status": "ok"},
+        )
+
+
+class StubDeepSeekAdapter(ProviderAdapter):
+    """DeepSeek 存根实现（用于测试和示例）。"""
+
+    def __init__(self, mock_response: str | None = None, mock_cost_per_1k: float = 0.001):
+        self.mock_response = mock_response or '{"status": "ok", "message": "hello from deepseek"}'
+        self.mock_cost_per_1k = mock_cost_per_1k
+
+    def generate(self, request: ModelRequest, **kwargs: object) -> ModelResponse:
+        # 1. 模拟生成延迟与 成本
+        prompt_t = 80
+        completion_t = 40
+        cost = ((prompt_t + completion_t) / 1000.0) * self.mock_cost_per_1k
+        # 2. 返回标准化响应
+        return ModelResponse(
+            content=self.mock_response,
+            stats=ModelStats(
+                prompt_tokens=prompt_t,
+                completion_tokens=completion_t,
+                total_tokens=prompt_t + completion_t,
+                latency_ms=120,
+                cost_usd=cost,
+            ),
+        )
+
+    def generate_stream(self, request: ModelRequest, **kwargs: object) -> Iterator[ModelStreamEvent]:
+        request_id = request.request_id or f"req_stub_{int(time.time() * 1000)}"
+        seq = 0
+        yield ModelStreamEvent(
+            event_type="start",
+            request_id=request_id,
+            sequence=seq,
+            timestamp_ms=int(time.time() * 1000),
+        )
+        seq += 1
+        chunk_size = 8
+        for idx in range(0, len(self.mock_response), chunk_size):
+            part = self.mock_response[idx : idx + chunk_size]
+            yield ModelStreamEvent(
+                event_type="delta",
+                request_id=request_id,
+                sequence=seq,
+                delta=part,
+                timestamp_ms=int(time.time() * 1000),
+            )
+            seq += 1
+        stats = ModelStats(
+            prompt_tokens=80,
+            completion_tokens=40,
+            total_tokens=120,
+            latency_ms=120,
+            cost_usd=((80 + 40) / 1000.0) * self.mock_cost_per_1k,
+        )
+        yield ModelStreamEvent(
+            event_type="usage",
+            request_id=request_id,
+            sequence=seq,
+            stats=stats,
+            timestamp_ms=int(time.time() * 1000),
+        )
+        seq += 1
+        yield ModelStreamEvent(
+            event_type="end",
+            request_id=request_id,
+            sequence=seq,
+            content=self.mock_response,
+            stats=stats,
+            timestamp_ms=int(time.time() * 1000),
+            metadata={"status": "ok"},
+        )
+```
+
 ### 第 5 步：最小测试（先证明行为）
 
 创建命令：
@@ -1060,10 +1516,12 @@ New-Item -ItemType File -Force "tests\\unit\\test_model_runtime.py" | Out-Null
 文件：[tests/unit/test_model_runtime.py](../../tests/unit/test_model_runtime.py)
 
 ```python
-"""Model Runtime 组件测试。"""
+﻿"""Model Runtime 组件测试。"""
 
 from __future__ import annotations
 
+import time
+from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pytest
@@ -1079,7 +1537,7 @@ from agent_forge.components.model_runtime import (
     StubDeepSeekAdapter,
     StubOpenAIAdapter,
 )
-from agent_forge.components.model_runtime.domain.schemas import ModelParseError
+from agent_forge.components.model_runtime.domain.schemas import ModelParseError, ModelStreamEvent
 from agent_forge.components.protocol import AgentMessage
 
 
@@ -1110,6 +1568,46 @@ class _BrokenJSONAdapter(ProviderAdapter):
                 cost_usd=0.001,
             ),
         )
+
+    def generate_stream(self, request: ModelRequest, **kwargs: object) -> Iterator[ModelStreamEvent]:
+        now = int(time.time() * 1000)
+        yield ModelStreamEvent(event_type="start", request_id=request.request_id or "req_test", sequence=0, timestamp_ms=now)
+        yield ModelStreamEvent(event_type="delta", request_id=request.request_id or "req_test", sequence=1, delta="{", timestamp_ms=now)
+        yield ModelStreamEvent(event_type="end", request_id=request.request_id or "req_test", sequence=2, content="{", timestamp_ms=now)
+
+
+class _CaptureRequestAdapter(ProviderAdapter):
+    """捕获请求以验证 generate hooks 行为。"""
+
+    def __init__(self) -> None:
+        self.captured_request: ModelRequest | None = None
+
+    def generate(self, request: ModelRequest, **kwargs: object) -> ModelResponse:
+        self.captured_request = request
+        return ModelResponse(content='{"ok": true}', stats=ModelStats(total_tokens=1))
+
+    def generate_stream(self, request: ModelRequest, **kwargs: object) -> Iterator[ModelStreamEvent]:
+        now = int(time.time() * 1000)
+        yield ModelStreamEvent(event_type="start", request_id=request.request_id or "req_capture", sequence=0, timestamp_ms=now)
+        yield ModelStreamEvent(event_type="end", request_id=request.request_id or "req_capture", sequence=1, content='{"ok": true}', timestamp_ms=now)
+
+
+class _GenerateHooks:
+    def __init__(self) -> None:
+        self.before_called = False
+        self.after_called = False
+
+    def before_request(self, request: ModelRequest) -> ModelRequest:
+        self.before_called = True
+        request.messages.append(AgentMessage(role="system", content="hook_injected"))
+        return request
+
+    def on_stream_event(self, event: ModelStreamEvent) -> ModelStreamEvent:
+        return event
+
+    def after_response(self, response: ModelResponse) -> ModelResponse:
+        self.after_called = True
+        return response
 
 
 class _FakeCompletions:
@@ -1302,6 +1800,21 @@ def test_self_healing_retry_flow_exceeds_limit() -> None:
     assert "JSON 格式非法" in str(exc_info.value.message)
     # 因为首调用 + 2次重试 = 3次
     assert adapter.call_count == 3
+
+
+def test_generate_should_call_hooks_for_non_stream() -> None:
+    req = ModelRequest(messages=[AgentMessage(role="user", content="hello")])
+    hooks = _GenerateHooks()
+    adapter = _CaptureRequestAdapter()
+    runtime = ModelRuntime(adapter=adapter)
+
+    response = runtime.generate(req, hooks=hooks)
+
+    assert response.content == '{"ok": true}'
+    assert hooks.before_called is True
+    assert hooks.after_called is True
+    assert adapter.captured_request is not None
+    assert adapter.captured_request.messages[-1].content == "hook_injected"
 ```
 
 最小命令：
@@ -1317,134 +1830,6 @@ uv run pytest tests/unit/test_model_runtime.py -q
 3. `runtime.generate(..., **kwargs)` 覆盖透传。
 4. 结构化输出 + 自愈重试上限。
 
-### 第 5.5 步：完整搭建 model_runtime 导出与存根文件
-
-这一节继续完成 `model_runtime` 目录中的导出层与离线存根实现，按顺序创建并填写后即可直接运行。
-
-创建命令：
-
-```bash
-touch src/agent_forge/components/model_runtime/__init__.py
-```
-
-```powershell
-New-Item -ItemType File -Force "src\\agent_forge\\components\\model_runtime\\__init__.py" | Out-Null
-```
-
-文件：[src/agent_forge/components/model_runtime/__init__.py](../../src/agent_forge/components/model_runtime/__init__.py)
-
-```python
-"""Model runtime component exports."""
-
-from agent_forge.components.model_runtime.application.runtime import ModelRuntime
-from agent_forge.components.model_runtime.domain.schemas import (
-    ModelAuthenticationError,
-    ModelError,
-    ModelParseError,
-    ModelRateLimitError,
-    ModelRequest,
-    ModelResponse,
-    ModelStats,
-    ModelTimeoutError,
-)
-from agent_forge.components.model_runtime.infrastructure.adapters import (
-    DeepSeekAdapter,
-    OpenAIAdapter,
-    OpenAICompatibleAdapter,
-    ProviderAdapter,
-    StubDeepSeekAdapter,
-    StubOpenAIAdapter,
-)
-
-__all__ = [
-    "ProviderAdapter",
-    "OpenAICompatibleAdapter",
-    "OpenAIAdapter",
-    "DeepSeekAdapter",
-    "StubDeepSeekAdapter",
-    "StubOpenAIAdapter",
-    "ModelRuntime",
-    "ModelRequest",
-    "ModelResponse",
-    "ModelStats",
-    "ModelError",
-    "ModelParseError",
-    "ModelTimeoutError",
-    "ModelRateLimitError",
-    "ModelAuthenticationError",
-]
-```
-
-创建命令：
-
-```bash
-touch src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py
-```
-
-```powershell
-New-Item -ItemType File -Force "src\\agent_forge\\components\\model_runtime\\infrastructure\\adapters\\stub.py" | Out-Null
-```
-
-文件：[src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py](../../src/agent_forge/components/model_runtime/infrastructure/adapters/stub.py)
-
-```python
-"""离线测试用适配器。"""
-
-from __future__ import annotations
-
-from agent_forge.components.model_runtime.infrastructure.adapters.base import ProviderAdapter
-from agent_forge.components.model_runtime.domain.schemas import ModelRequest, ModelResponse, ModelStats
-
-
-class StubOpenAIAdapter(ProviderAdapter):
-    """OpenAI 存根实现（用于测试和示例）。"""
-
-    def __init__(self, mock_response: str | None = None, mock_cost_per_1k: float = 0.002):
-        self.mock_response = mock_response or '{"status": "ok", "message": "hello from openai"}'
-        self.mock_cost_per_1k = mock_cost_per_1k
-
-    def generate(self, request: ModelRequest, **kwargs: object) -> ModelResponse:
-        # 1. 模拟生成延迟与 成本
-        prompt_t = 100
-        completion_t = 50
-        cost = ((prompt_t + completion_t) / 1000.0) * self.mock_cost_per_1k
-        # 2. 返回标准化响应
-        return ModelResponse(
-            content=self.mock_response,
-            stats=ModelStats(
-                prompt_tokens=prompt_t,
-                completion_tokens=completion_t,
-                total_tokens=prompt_t + completion_t,
-                latency_ms=150,
-                cost_usd=cost,
-            ),
-        )
-
-
-class StubDeepSeekAdapter(ProviderAdapter):
-    """DeepSeek 存根实现（用于测试和示例）。"""
-
-    def __init__(self, mock_response: str | None = None, mock_cost_per_1k: float = 0.001):
-        self.mock_response = mock_response or '{"status": "ok", "message": "hello from deepseek"}'
-        self.mock_cost_per_1k = mock_cost_per_1k
-
-    def generate(self, request: ModelRequest, **kwargs: object) -> ModelResponse:
-        # 1. 模拟生成延迟与 成本
-        prompt_t = 80
-        completion_t = 40
-        cost = ((prompt_t + completion_t) / 1000.0) * self.mock_cost_per_1k
-        # 2. 返回标准化响应
-        return ModelResponse(
-            content=self.mock_response,
-            stats=ModelStats(
-                prompt_tokens=prompt_t,
-                completion_tokens=completion_t,
-                total_tokens=prompt_t + completion_t,
-                latency_ms=120,
-                cost_usd=cost,
-            ),
-        )
-```
 
 ### 第 6 步：DeepSeek 线上真实调用手动打通
 
@@ -1510,6 +1895,7 @@ def build_deepseek_request(user_input: str, *, stream: bool) -> ModelRequest:
             "required": ["answer", "confidence"],
         }
 
+    # 2. 统一模型参数，避免流式/非流式出现行为分叉。
     return ModelRequest(
         messages=[AgentMessage(role="user", content=user_input)],
         model=settings.deepseek_model,
@@ -1650,19 +2036,11 @@ AF_OPENAI_MODEL=gpt-4o-mini
 
 再执行真实打通命令（非流式）：
 
-```bash
-uv run python examples/model_runtime/deepseek_demo.py --mode non-stream "请给出一份劳动仲裁材料准备清单"
-```
-
 ```powershell
 uv run python examples/model_runtime/deepseek_demo.py --mode non-stream "请给出一份劳动仲裁材料准备清单"
 ```
 
 再执行真实打通命令（流式）：
-
-```bash
-uv run python examples/model_runtime/deepseek_demo.py --mode stream "请给出一份劳动仲裁材料准备清单"
-```
 
 ```powershell
 uv run python examples/model_runtime/deepseek_demo.py --mode stream "请给出一份劳动仲裁材料准备清单"
@@ -1758,7 +2136,3 @@ $content = Get-Content .env -Raw
 ## 下一章预告
 
 下一章进入 Tool Runtime：把 Engine 的 `act` 从“模型调用”扩展为“模型 + 工具协同执行”，并建立工具调用的幂等、超时与错误语义。
-
-
-
-
