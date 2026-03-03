@@ -62,6 +62,29 @@
 2. 搭起一个最小可运行骨架（CLI + API + 测试），这是后面14章的起跑线。
 3. 定个规矩：后面每章，必须有代码、有测试、能验证。咱们不搞“脑补架构”。
 
+## 架构位置说明（演进视角）
+
+### 当前系统结构（第 1 章起点）
+
+```mermaid
+flowchart TD
+  A[CLI 入口] --> B[API 入口]
+```
+
+### 本章完成后的结构
+
+```mermaid
+flowchart TD
+  A[CLI 入口] --> B[API 入口]
+  B --> C[测试护栏与回归入口]
+```
+
+本章定位很明确：先把工程外壳和验证护栏立住。
+
+1. 新增模块依赖关系：测试依赖 `src` 主线代码，不引入反向依赖。
+2. 依赖方向保持稳定：应用入口 -> 组件代码 -> 测试验证。
+3. 本章不引入循环依赖，后续章节只做增量扩展，不推翻现有骨架。
+
 ## 动手之前
 
 1. Python 版本 >= 3.11
@@ -80,6 +103,26 @@ uv sync --dev
 ## 代码放在哪
 
 - 主线演进目录：`src/agent_forge/`
+
+## 本章主线改动范围（强制声明）
+
+### 代码目录
+
+- `src/agent_forge/apps/`
+
+### 测试目录
+
+- `tests/`
+
+### 本章涉及的真实文件
+
+- [pyproject.toml](../../pyproject.toml)
+- [src/agent_forge/apps/cli.py](../../src/agent_forge/apps/cli.py)
+- [src/agent_forge/apps/api/app.py](../../src/agent_forge/apps/api/app.py)
+- [tests/conftest.py](../../tests/conftest.py)
+- [tests/unit/test_bootstrap.py](../../tests/unit/test_bootstrap.py)
+
+约束说明：本章只做主线增量，不引入占位文件，不添加“下章再删”的过渡代码。
 
 ## 开干
 
@@ -117,7 +160,7 @@ New-Item -ItemType Directory -Force src/agent_forge/apps/api | Out-Null
 New-Item -ItemType Directory -Force tests/unit | Out-Null
 ```
 
-### 第 3 步：写核心代码（可以直接跑的版本）
+### 第 3 步：写核心代码
 
 创建命令：
 
@@ -211,7 +254,7 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 ```
 
-### 第 4 步：写测试（也是可以直接跑的版本）
+### 第 4 步：写测试
 
 创建命令：
 
@@ -284,7 +327,7 @@ Get-ChildItem src/agent_forge/apps
 Get-ChildItem tests/unit
 ```
 
-## 跑起来看看
+## 运行命令
 
 验证主线：
 
@@ -297,8 +340,23 @@ uv run pytest tests/unit/test_bootstrap.py -q
 ```bash
 uv pip install -e .
 uv run agent-forge version
-# 预期输出: agent-forge 0.1.0（主线）
+# 预期输出: agent-forge-chapter-01
 ```
+
+
+PowerShell 等价命令：
+
+```powershell
+uv run pytest tests/unit/test_bootstrap.py -q
+uv pip install -e .
+uv run agent-forge version
+```
+
+## 增量闭环验证
+
+1. 主程序可运行：`agent-forge version` 能稳定返回版本字符串。
+2. 新增能力可见：`/v1/health` 与 `test_bootstrap` 同时通过。
+3. 回归不破坏：后续章节在此骨架上扩展，不需要回头重写第一章代码。
 
 ## 检查清单
 

@@ -4,7 +4,31 @@
 
 1. 搭建 Protocol 组件的完整对象模型：`AgentMessage`、`ToolCall`、`ToolResult`、`ExecutionEvent`、`FinalAnswer`、`AgentState`。
 2. 建立“协议先行”的工程纪律：新能力先对齐协议，再写实现。
-3. 交付可独立运行的 主线 主线（代码 + 测试），并与主线 `src/agent_forge` 保持一致。
+3. 交付可独立运行的 主线（代码 + 测试），并与主线 `src/agent_forge` 保持一致。
+
+## 架构位置说明（演进视角）
+
+### 当前系统结构（第 2 章开始前）
+
+```mermaid
+flowchart TD
+  A[CLI/API 入口] --> B[Engine 预留位置]
+  B --> C[待统一的数据契约]
+```
+
+### 本章完成后的结构
+
+```mermaid
+flowchart TD
+  A[CLI/API 入口] --> B[Protocol 契约层]
+  B --> C[Engine/Model/Tool 组件]
+  B --> D[测试与回归]
+```
+
+1. 新模块依赖谁：Protocol 仅依赖基础库（pydantic），不反向依赖 Engine。
+2. 谁依赖它：后续 Engine、Model Runtime、Tool Runtime 都以它为统一输入输出契约。
+3. 依赖方向是否变化：变化为“先协议后实现”，降低跨组件耦合。
+4. 循环风险：本章保持单向依赖，不引入循环依赖。
 
 ## 前置条件
 
@@ -13,29 +37,13 @@
 3. 当前命令执行目录：仓库根目录（即包含 `src/`、`tests/`、`docs/` 的目录）
 4. 已完成第一章（你已经有最小 CLI/API 骨架）
 
-## 环境准备与缺包兜底步骤（可直接复制）
+## 环境准备
 
 ```bash
 uv add pydantic
 uv add --dev pytest
 uv sync --dev
 ```
-
-如果你是新环境，且 `uv` 还没安装：
-
-Windows PowerShell：
-
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-macOS / Linux：
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-
 
 ## 先讲“面”：为什么第二章必须先做 Protocol
 
@@ -66,6 +74,25 @@ flowchart TD
 
 这条链路你可以先记一句话：  
 所有输入输出，**都先落到协议对象**，再被各组件消费。
+
+## 本章主线改动范围（强制声明）
+
+### 代码目录
+
+- `src/agent_forge/components/protocol/`
+
+### 测试目录
+
+- `tests/unit/`
+
+### 本章涉及的真实文件
+
+- [src/agent_forge/components/protocol/__init__.py](../../src/agent_forge/components/protocol/__init__.py)
+- [src/agent_forge/components/protocol/domain/__init__.py](../../src/agent_forge/components/protocol/domain/__init__.py)
+- [src/agent_forge/components/protocol/domain/schemas.py](../../src/agent_forge/components/protocol/domain/schemas.py)
+- [tests/unit/test_protocol.py](../../tests/unit/test_protocol.py)
+
+约束说明：本章只新增协议层能力，不引入临时代码，不推翻第一章骨架。
 
 ## 再讲“点”：本章具体实施步骤
 
@@ -146,7 +173,7 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\protocol\\domain\\
 3. 边界条件：新增协议对象时必须同步更新 `__init__.py` 和 `__all__`。
 4. 失败模式：入口没导出会导致上层模块导入失败，或出现隐式依赖内部路径。
 
-### 第 3 步：写 Protocol 核心 Schema（完整可运行）
+### 第 3 步：写 Protocol 核心 Schema
 
 创建命令：
 
@@ -416,11 +443,24 @@ def test_error_info_schema() -> None:
 
 ## 运行命令
 
-先验证 主线 主线：
+先验证 主线：
 
 ```bash
 uv run pytest tests/unit/test_protocol.py -q
 ```
+
+
+PowerShell 等价命令：
+
+```powershell
+uv run pytest tests/unit/test_protocol.py -q
+```
+
+## 增量闭环验证
+
+1. 协议闭环：`AgentState` 与核心对象可序列化/反序列化。
+2. 边界闭环：空白关键字段会被校验器拦截。
+3. 架构闭环：Protocol 已成为后续组件的稳定契约入口。
 
 ## 验证清单
 
@@ -437,7 +477,7 @@ uv run pytest tests/unit/test_protocol.py -q
 
 1. Protocol 核心对象全部可序列化和反序列化。
 2. 关键输入边界（空白字段）被协议层拦截。
-4. 你能清楚回答每个对象“为什么存在”。
+3. 你能清楚回答每个对象“为什么存在”。
 
 ## 下一章预告
 
