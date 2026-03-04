@@ -10,7 +10,7 @@
 - [x] Protocol
 - [x] Engine（loop）
 - [x] Model Runtime（LLM Adapter）
-- [ ] Tool Runtime（API Adapter）
+- [ ] Tool Runtime（API Adapter，代码已完成，教程待审核后编写）
 - [ ] Observability
 - [ ] Context Engineering
 - [ ] Retrieval
@@ -20,7 +20,7 @@
 
 ## 进行中组件（唯一）
 
-- Tool Runtime（API Adapter）（初始化中）
+- Tool Runtime（API Adapter）（代码与测试已落地，等待教程小步）
 
 ## 已通过审核的小步
 
@@ -75,7 +75,7 @@
 
 ## 下一步唯一任务
 
-- 若本步审核通过，进入 Tool Runtime（API Adapter）组件实现与第五章教程。
+- 若本步审核通过，进入第五章教程撰写与文档同步（不改代码主干）。
 
 ## 阻塞项
 
@@ -159,3 +159,28 @@
 61. 第四章关键代码块已从主线文件自动同步并通过代码一致性检查（文件标记后的代码块与仓库真实文件逐项比对通过），满足“完整代码、无代码漂移”要求。
 62. 已修复第四章教程乱码问题：回滚到 Git 中 UTF-8 原文后再重排章节入口，避免 PowerShell 编码页导致的“?”污染。
 63. 第四章已按读者视角从章节标题直接进入正文（移除“重组说明”前言），并保持全部代码块与主线文件一致（无代码漂移）。
+
+64. Tool Runtime 代码主干已落地：新增 `domain/application/infrastructure` 分层实现，包含工具注册、参数校验、能力校验、幂等缓存、超时执行、统一错误映射与执行记录。
+65. 已实现两个示例工具：`python_math`（AST 白名单安全求值）与 `tavily_search`（官方 SDK 接入，支持 mock client 注入）。
+66. 已新增 Tool Runtime 单测与 Engine 零侵入集成测试：`tests/unit/test_tool_runtime.py`、`tests/unit/test_tool_runtime_engine_integration.py`。
+67. 已新增可运行示例脚本：`examples/tool_runtime/tool_runtime_demo.py`，可分别验证数学工具与 Tavily 搜索工具执行链路。
+68. 回归结果：`uv run --no-sync pytest tests/unit/test_tool_runtime.py tests/unit/test_tool_runtime_engine_integration.py -q` 通过（10 passed）；`uv run --no-sync pytest -q` 通过（36 passed）。
+69. 受当前网络限制，`uv run` 常规模式会触发在线拉取依赖失败（os error 10013），本次使用 `--no-sync` 进行离线回归验证。
+70. Tool Runtime 已补齐高级特性：新增 `execute_async`、`ToolRuntimeHooks`（before/on_event/after/on_error）与链式调用 `run_chain/arun_chain`。
+71. 已新增高级特性回归测试（hooks/async/chain），并修复前置校验失败未触发 `on_error` 的缺陷。
+72. 最新回归：`uv run --no-sync pytest -q` 通过（39 passed）。
+73. Tool Runtime 结构已工程化重构：`ToolRuntime` 仅保留门面职责，异步执行与链式编排拆分为 `ToolExecutor`、`ToolChainRunner`，hooks 分发拆分为 `HookDispatcher`。
+74. 重构后行为保持兼容，工具相关测试与全量回归均通过（39 passed）。
+75. Tool Runtime 执行主流程与链式编排主流程已补齐分步注释（1/2/3），覆盖执行门禁、重试、错误收口与链路短路边界。
+76. 已新增异步批量执行接口 `execute_many_async(tool_calls, max_concurrency)`，支持并发上限与顺序稳定返回。
+77. 新增批量异步执行测试与并发参数校验测试，回归通过（41 passed）。
+78. 已增强 `examples/tool_runtime/tool_runtime_demo.py` 的可测试性：拆分为 `create_demo_runtime/run_math_once/run_tavily_once/run_math_batch_async`，CLI 仅做参数解析与输出。
+79. 已新增 `tests/unit/test_tool_runtime_demo.py`，覆盖 5 个 demo 场景（数学成功/数学非法表达式/Tavily mock/批量执行/顺序稳定）。
+80. 全量回归更新：`uv run --no-sync pytest -q` 通过（46 passed）。
+81. 已在 `tool_runtime_demo.py` 增加工具链示例入口 `run_tool_chain_once` 与 CLI 参数 `--run-chain`。
+82. `test_tool_runtime_demo.py` 已新增工具链成功与失败短路测试，demo 测试扩展为 7 个用例。
+83. 全量回归更新：`uv run --no-sync pytest -q` 通过（48 passed）。
+84. 已新增硬约束：业务代码每个方法必须有 docstring，且需包含参数级说明（Args）与返回值说明（Returns），异常分支补 Raises。
+85. 已对 Tool Runtime 相关主代码补齐方法级参数注释（门面/执行器/链路编排/hooks/工具实现/demo 函数）。
+86. 为兼容 `tests.unit.conftest` 绝对导入，新增 `tests/__init__.py` 与 `tests/unit/__init__.py` 包标记。
+87. 最新回归：`uv run --no-sync pytest -q` 通过（48 passed）。

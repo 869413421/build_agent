@@ -76,3 +76,22 @@
 47. [x] 第四章所有关键“文件：path”代码块已与主线文件重新同步，并通过代码一致性检查（无代码漂移）。
 48. [x] 第四章乱码已修复（UTF-8 原文恢复），不再使用会污染中文的写入路径。
 49. [x] 第四章已从章节标题直接进入读者正文，移除“重组说明”前置段，阅读顺序改为从0到1主线学习。
+
+## 会话补充（2026-03-03）
+
+50. [x] 已完成 Tool Runtime 组件代码实现（注册/校验/权限/幂等/超时/错误映射/记录）。
+51. [x] 已实现两个示例工具（Tavily 搜索 + Python 数学表达式工具）。
+52. [x] 已完成 Tool Runtime 单测与 Engine 零侵入集成测试，并通过离线回归（36 passed）。
+53. [ ] 第五章教程尚未开始（按用户要求先验收代码后再规划教程）。
+54. [x] 已更新 `docs/governance/PROJECT_STATUS.md`。
+55. [x] 已通知用户当前可进入“代码审核”步骤。
+56. [x] Tool Runtime 已补齐 `execute_async`、hooks 与 chain 机制，并通过新增测试验证。
+57. [x] 已修复 Tool Runtime 前置错误路径未触发 `on_error` hook 的问题。
+58. [x] 全量回归更新为 39 passed（`uv run --no-sync pytest -q`）。
+59. [x] 已完成 Tool Runtime 工程化重构：异步执行与链式编排从门面类拆分为独立服务对象（Executor/ChainRunner/HookDispatcher）。
+60. [x] 已按约束补齐 Tool Runtime 主流程分步注释（含执行与链式编排）。
+61. [x] 已新增异步批量工具执行接口 `execute_many_async` 并补全测试。
+62. [x] 已为 tool_runtime_demo 增加完整单测覆盖（5个新增用例）。
+63. [x] 已为 tool_runtime_demo 增加工具链示例与对应测试（成功链路 + 失败短路）。
+64. [x] 已将“参数级注释 + 每个方法注释全覆盖”写入 AI 任务硬约束并在本次 Tool Runtime 代码执行。
+65. [x] 已补齐 Tool Runtime 主代码方法级注释并完成全量回归（48 passed）。

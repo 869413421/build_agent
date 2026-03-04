@@ -19,6 +19,7 @@ class AppConfig(BaseSettings):
 
     openai_api_key: str | None = Field(default=None, description="OpenAI API Key")
     deepseek_api_key: str | None = Field(default=None, description="DeepSeek API Key")
+    tavily_api_key: str | None = Field(default=None, description="Tavily API Key")
     openai_base_url: str = Field(default="https://api.openai.com/v1", description="OpenAI Base URL")
     deepseek_base_url: str = Field(default="https://api.deepseek.com/v1", description="DeepSeek Base URL")
     openai_model: str = Field(default="gpt-4o-mini", description="OpenAI 默认模型")
