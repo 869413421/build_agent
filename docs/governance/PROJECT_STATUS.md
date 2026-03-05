@@ -10,7 +10,7 @@
 - [x] Protocol
 - [x] Engine（loop）
 - [x] Model Runtime（LLM Adapter）
-- [ ] Tool Runtime（API Adapter，代码已完成，教程待审核后编写）
+- [x] Tool Runtime（API Adapter，代码已完成，教程待审核后编写）
 - [ ] Observability
 - [ ] Context Engineering
 - [ ] Retrieval
@@ -205,3 +205,7 @@
 106. 已使用 `publish-grade-article-auditor` 完成第 02~05 章出版级增量优化：保守精简重复叙述、补齐工程可执行兜底命令、统一术语与承接文案，不删减原有代码块。
 107. 第 02~05 章已完成代码零删减校验并全部通过：`02(before=21, now=24)`、`03(before=22, now=22)`、`04(before=74, now=77)`、`05(before=45, now=49)`。
 108. 第 05 章已修正章节承接与运行说明一致性：补齐 PowerShell/`python` 兜底命令，统一 DoD 标题风格，并将下一章预告调整为 Observability 主线。
+109. 已按用户要求再次使用 `publish-grade-article-auditor` 优化第 04 章：重点补强 `support/config+logging`、`adapters/base.py`、`runtime.py`、`test_model_runtime.py`、`deepseek_demo.py` 的主流程拆解、成功/失败链路、图示与工程取舍，且保持正文自然融合。
+110. 第 04 章本轮复优化已通过代码零删减校验：`before=75, now=80`，确认未删除任何原有代码块。
+111. Re-optimized Chapter 05 with `publish-grade-article-auditor`: added execution-closure sections for environment fallback, run commands, verification checklist, and FAQ while preserving narrative continuity.
+112. Chapter 05 passed code-zero-deletion verification: `code_block_guard verify` returned `before=49, now=56, PASS`, confirming no original code block was removed.

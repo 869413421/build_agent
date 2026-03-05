@@ -90,6 +90,10 @@
 58. [x] 第 02~05 章代码零删减校验全部通过（inventory + verify）。
 59. [x] 第 04~05 章已补齐跨环境运行命令（Bash + PowerShell）与 `python` 兜底路径，工程可执行闭环已增强。
 60. [x] 第 05 章已修正下一章承接文案为 Observability，与组件路线图保持一致。
+61. [x] 已按用户要求再次优化第 04 章，并补齐主要代码段深度讲解（主流程拆解 + 成功/失败例子 + 图示 + 工程取舍/边界）。
+62. [x] 第 04 章本轮代码零删减校验通过：`before=75, now=80`。
+63. [x] 已同步更新 `docs/governance/PROJECT_STATUS.md` 记录本轮优化与校验结果，等待用户审核。
+
 
 ## 会话补充（2026-03-03）
 
@@ -120,3 +124,5 @@
 74. [x] 已将“主要代码讲解需达到 `chain_runner.py` 级别”写入黄金法则、章节模板与 AI 执行硬约束，后续章节按该标准统一执行。
 75. [x] 已创建并验证新技能 `publish-grade-article-auditor`（出版级审核+主动优化+代码零删减校验脚本）。
 76. [x] 已修复技能加载报错：`.agents/skills/publish-grade-article-auditor/SKILL.md` 改为 UTF-8 无 BOM（frontmatter 从首字节 `---` 开始），并同步将 `.agents/skills/tutorial-quality-checker/SKILL.md` 统一为 UTF-8 无 BOM。
+77. [x] Re-optimized Chapter 05 docs: added environment fallback, run commands, verification checklist, and FAQ supplement; original code blocks kept intact.
+78. [x] Code-block guard verification completed for Chapter 05: `before=49, now=56, PASS`.

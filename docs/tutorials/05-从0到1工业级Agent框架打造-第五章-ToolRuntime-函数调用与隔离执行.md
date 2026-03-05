@@ -1094,3 +1094,4 @@ uv run pytest tests\unit\test_tool_runtime.py
 ## 下一章预告
 
 下一章进入 Observability：把 Tool Runtime 的执行轨迹统一接入 trace/log/metrics，形成“可回放、可定位、可验收”的生产观测闭环。
+

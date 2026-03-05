@@ -43,6 +43,18 @@ flowchart TD
 2. 你可以正常运行：`uv run pytest tests/unit/test_protocol.py -q`。
 3. 当前命令执行目录：仓库根目录（包含 `src/`、`tests/`、`docs/`）。
 
+## 环境准备
+
+```bash
+uv sync --dev
+uv run pytest tests/unit/test_protocol.py -q
+```
+
+
+```bash
+python -m pytest tests/unit/test_engine.py -q
+```
+
 ## 本章怎么学（先不“啃源码”）
 
 如果你在这一章有“突然变难”的感觉，这是正常的。
@@ -114,6 +126,11 @@ flowchart TD
 3. `reflect` 是决策闸门，决定继续、重试、终止。  
 4. `update` 才算“步骤提交成功”，这对恢复一致性非常关键。  
 5. 任一步骤失败都要落事件并进入 `finish`，不能静默吞掉。  
+
+成功/失败速查（评审时建议先看这张表）：
+
+1. 成功链路：`act` 返回可消费结果 -> `reflect` 给出 `continue` -> `update` 提交状态 -> `finish` 汇总输出。
+2. 失败链路：`act` 超时或异常 -> `reflect` 给出 `retry/abort` -> 记录标准错误事件 -> `finish` 给可解释失败结果。
 
 ## 再讲“点”：本章重点解哪些工程难题
 
@@ -1170,6 +1187,11 @@ PowerShell 等价命令：
 uv run pytest tests/unit/test_engine.py -q
 uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q
 ```
+
+预期结果：
+
+1. 最小验证应显示 `test_engine.py` 全通过（无失败用例）。
+2. 完整回归应同时覆盖 Protocol 与 Engine，确保跨组件契约不回退。
 
 ## 增量闭环验证
 
