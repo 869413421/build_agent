@@ -87,14 +87,6 @@ flowchart TD
 
 ---
 
-
-
-
-
-
-
----
-
 ## 深入理解：为什么第一章先抓“骨架”而不是“能力”
 
 ### 一句话先讲人话
@@ -236,6 +228,37 @@ dependencies = [
 agent-forge = "agent_forge.apps.cli:app"
 ```
 
+代码讲解（`pyproject.toml`）：
+
+1. 主流程拆解
+2. `name/version/requires-python` 锁定工程身份与运行边界，保证团队机器和 CI 的解释器语义一致。
+3. `dependencies` 把“能跑起来最小集合”一次性写清，避免后续章节出现“我本地能跑，你那边不行”的幽灵问题。
+4. `[project.scripts]` 把 `agent-forge` 映射到 `agent_forge.apps.cli:app`，形成统一入口，后续所有 CLI 子命令都挂在这个门面上。
+
+成功链路例子：
+
+1. 新同学拉仓库后执行 `uv sync --dev`。
+2. 入口脚本生成成功。
+3. `uv run agent-forge version` 输出版本字符串，主线连通。
+
+失败链路例子：
+
+1. 忘了写 `[project.scripts]`。
+2. 测试可能仍能通过（因为直接 import 函数），但 CLI 无法被系统识别。
+3. 到联调阶段才暴露“命令不存在”，返工成本更高。
+
+```mermaid
+flowchart TD
+  A[pyproject.toml] --> B[uv sync --dev]
+  B --> C[生成命令入口 agent-forge]
+  C --> D[CLI 子命令可执行]
+```
+
+工程取舍与边界：
+
+1. 第一章只保留最小依赖，不提前引入重量库，目的是让读者先建立稳定主线。
+2. 这里暂不锁死精确 patch 版本，是为了降低课程初期安装摩擦；进入生产发布阶段再补充锁版本策略。
+
 创建命令：
 
 ```bash
@@ -276,6 +299,41 @@ if __name__ == "__main__":
 
 这个文件看起来简单，但它非常关键：这是后续所有 CLI 能力的门面入口。
 
+代码讲解（`cli.py`）：
+
+1. 主流程拆解
+2. `app = typer.Typer(...)` 创建命令组容器，是 CLI 的“路由总线”。
+3. `@app.callback()` 强制启用“子命令模式”，避免 Typer 退化成单命令语义。
+4. `@app.command()` 注册 `version`，将“可观测的最小输出”挂到统一入口上。
+
+成功链路例子：
+
+1. 命令 `uv run agent-forge version` 进入 `main()` -> 路由到 `version()`。
+2. 控制台输出 `agent-forge-chapter-01`，说明入口、命令路由、执行函数全部打通。
+
+失败链路例子：
+
+1. 去掉 `@app.callback()` 且只保留一个命令。
+2. Typer 可能把 `version` 当主命令，导致 `agent-forge version` 报 `Got unexpected extra argument (version)`。
+3. 这类问题常在“命令看起来都写了”时出现，最容易误判为环境问题。
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant E as Command Entry
+  participant T as Typer app
+  participant V as Version Command
+  U->>E: agent-forge version
+  E->>T: load app
+  T->>V: dispatch subcommand
+  V-->>U: agent-forge-chapter-01
+```
+
+工程取舍与边界：
+
+1. 第一章不接入复杂 CLI 参数，是为了把入口语义先固定，再逐章扩展能力。
+2. `version()` 用固定字符串而非动态读取包元数据，减少初期依赖链复杂度，后续章节再升级为统一版本源。
+
 创建命令：
 
 ```bash
@@ -300,6 +358,36 @@ app = FastAPI(title="agent_forge_chapter_01")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 ```
+
+代码讲解（`api/app.py`）：
+
+1. 主流程拆解
+2. `FastAPI(...)` 创建 HTTP 应用实例，承载后续所有 API 路由。
+3. `@app.get("/v1/health")` 建立健康探针，给部署与监控系统一个稳定检查点。
+4. `health()` 返回结构化字典，确保测试、运维探针、网关都能用一致格式判断服务状态。
+
+成功链路例子：
+
+1. 应用启动后访问 `/v1/health` 返回 `{"status": "ok"}`。
+2. 测试直接调用 `health()` 也返回同样结构，API 行为与单测断言保持一致。
+
+失败链路例子：
+
+1. 返回值改成字符串 `"ok"`。
+2. 人工看似没问题，但自动化断言或网关 JSON 规则可能失败。
+3. 线上健康检查误判为异常，导致实例被频繁摘除。
+
+```mermaid
+flowchart LR
+  A[Probe Or Test] --> B[Health Endpoint]
+  B --> C[Status OK]
+  C --> D[Service Healthy]
+```
+
+工程取舍与边界：
+
+1. 第一章只提供只读健康检查，不引入写操作，避免还没建好安全边界就暴露副作用接口。
+2. 先固定 `/v1` 前缀，是为后续版本演进预留路径空间。
 
 ### 第 4 步：写测试
 
@@ -353,6 +441,36 @@ def test_health_endpoint_function() -> None:
     assert health() == {"status": "ok"}
 ```
 
+代码讲解（`tests/conftest.py` + `tests/unit/test_bootstrap.py`）：
+
+1. 主流程拆解
+2. `conftest.py` 在测试启动时把 `src/` 注入 `sys.path`，让测试运行环境与仓库源码目录对齐。
+3. `test_bootstrap.py` 直接断言 `health()` 输出，验证“最小 API 语义”是否成立。
+4. 两者组合形成第一条回归护栏：环境可导入 + 核心行为可断言。
+
+成功链路例子：
+
+1. 执行 `uv run pytest tests/unit/test_bootstrap.py -q`。
+2. `agent_forge` 可导入，断言命中，回归通过。
+
+失败链路例子：
+
+1. 删除或写错 `conftest.py` 路径注入。
+2. 立刻出现 `ModuleNotFoundError`，在第一章就能暴露而不是拖到后续复杂章节。
+
+```mermaid
+flowchart TD
+  A[pytest 启动] --> B[加载 conftest 注入 src 路径]
+  B --> C[导入 agent_forge.apps.api.app]
+  C --> D[执行 health 断言]
+  D --> E[通过或失败]
+```
+
+工程取舍与边界：
+
+1. 这里选择“函数级验证”而非端到端 HTTP 测试，是为了降低第一章认知负担，先把最小可验证链路建立起来。
+2. 当路由、依赖注入、鉴权中间件增多后，再逐章补充 TestClient 与集成测试。
+
 ### 第 5 步：一致性检查
 
 这一节只做两件事：
@@ -398,6 +516,40 @@ uv run pytest tests/unit/test_bootstrap.py -q
 uv pip install -e .
 uv run agent-forge version
 ```
+
+## 环境准备与缺包兜底步骤（可直接复制）
+
+当你在公司网络、离线环境或本地权限受限时，优先按下面顺序排查：
+
+```bash
+uv --version
+python --version
+uv sync --dev
+uv run pytest tests/unit/test_bootstrap.py -q
+```
+
+Windows PowerShell：
+
+```powershell
+uv --version
+python --version
+uv sync --dev
+uv run pytest tests/unit/test_bootstrap.py -q
+```
+
+若 `uv sync --dev` 因缓存权限或网络策略失败，可临时使用 Python 兜底验证“第一章主线是否可跑”：
+
+```bash
+python -m pytest tests/unit/test_bootstrap.py -q
+python -m agent_forge.apps.cli version
+```
+
+```powershell
+python -m pytest tests/unit/test_bootstrap.py -q
+python -m agent_forge.apps.cli version
+```
+
+这一步的设计意图是先确认“代码主线没问题”，再回头治理 `uv` 环境问题，避免把业务故障和环境故障混在一起排查。
 
 ## 增量闭环验证
 
