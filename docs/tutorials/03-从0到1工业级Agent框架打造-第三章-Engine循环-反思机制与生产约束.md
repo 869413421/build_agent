@@ -127,6 +127,60 @@ flowchart TD
 
 ---
 
+---
+
+
+
+---
+
+## 深入理解：Engine Loop 为什么必须把 reflect 做成硬机制
+
+### 白话理解 Engine Loop
+
+Engine loop 可以理解成“项目经理的固定工作节奏”：
+
+1. 先计划（plan）
+2. 再执行（act）
+3. 看结果（observe）
+4. 复盘（reflect）
+5. 更新状态（update）
+6. 决定结束（finish）
+
+### 例子：为什么 reflect 不能省
+
+成功链路例子：
+
+1. 第一次工具调用超时。
+2. reflect 识别为可重试错误。
+3. 第二次重试成功，任务继续推进。
+
+失败链路例子：
+
+1. 没有 reflect，第一次失败就直接终止。
+2. 用户看到“系统失败”，但本可自动恢复。
+
+### 时序图（帮助你记住每步职责）
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant E as Engine
+  participant M as Model/Tool
+  U->>E: task
+  E->>E: plan
+  E->>M: act
+  M-->>E: observe
+  E->>E: reflect
+  E->>E: update
+  E-->>U: finish
+```
+
+### 调试建议
+
+1. 先看 stop_reason，不要先看最终文案。
+2. 再看 error 事件序列，定位是“门禁失败”还是“执行失败”。
+3. 最后看 reflected_retry_count，判断系统是否做了自愈尝试。
+
 ## 本章主线改动范围（强制声明）
 
 ### 代码目录
@@ -1167,4 +1221,3 @@ uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q
 ## 下一章预告
 
 下一章进入 Model Runtime：把 Engine 的 `act` 从“可执行接口”升级为“真实模型调用能力”，并统一适配 OpenAI / DeepSeek 与结构化输出防崩策略。
-

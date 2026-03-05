@@ -1,4 +1,4 @@
-# 《从0到1工业级Agent框架打造》第四章：Model Runtime 真调用打通（OpenAI / DeepSeek）
+﻿# 《从0到1工业级Agent框架打造》第四章：Model Runtime 真调用打通（OpenAI / DeepSeek）
 
 ## 目标
 
@@ -78,6 +78,49 @@ flowchart TD
   G -->|失败| H[注入修复提示并重试]
   H --> B
 ```
+
+---
+
+
+---
+
+## 深入理解：Model Runtime 为什么是“模型能力”和“工程稳定性”之间的翻译层
+
+### 一句话先讲人话
+
+Model Runtime 不是“再包一层 SDK”这么简单，它的核心价值是把“模型侧变化”隔离在适配器里，把“系统侧稳定性”固定在统一契约里。
+
+### 成功链路例子（你希望线上每天都在发生）
+
+1. Engine 只构造 `ModelRequest`，不关心是 OpenAI 还是 DeepSeek。
+2. Runtime 把请求交给对应 Adapter，并统一产出 `ModelResponse`。
+3. 上层只读取 `content/parsed_output/stats`，代码不出现厂商分支判断。
+4. 新增模型供应商时，只新增 Adapter，不改 Engine 主流程。
+
+### 失败链路例子（没有 Runtime 时非常常见）
+
+1. 业务层直接调用厂商 SDK 并写死参数名。
+2. 厂商升级接口后字段变化，业务层多处一起报错。
+3. 调试时只能看混乱字符串错误，无法统一判断是否可重试。
+4. 最后项目里出现大量“某某模型专用 if/else”，系统逐步失控。
+
+### 一张图看清职责边界
+
+```mermaid
+flowchart LR
+  A[Engine] --> B[ModelRequest]
+  B --> C[Model Runtime]
+  C --> D[Provider Adapter]
+  D --> E[OpenAI / DeepSeek SDK]
+  C --> F[ModelResponse]
+  F --> A
+```
+
+### 读这一章代码时建议你重点盯 3 件事
+
+1. 统一契约是否稳定：`ModelRequest/ModelResponse` 是否足够表达主流程，且不泄漏厂商细节。
+2. 错误语义是否可执行：`ModelParseError/ModelTimeoutError/ModelRateLimitError` 是否能直接支撑“重试还是终止”的决策。
+3. 自愈边界是否可控：有重试上限、可观测日志、可解释失败，而不是无限重试。
 
 ## 本章主线改动范围（强制声明）
 

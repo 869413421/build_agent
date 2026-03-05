@@ -75,7 +75,62 @@ flowchart TD
 这条链路你可以先记一句话：  
 所有输入输出，**都先落到协议对象**，再被各组件消费。
 
-## 本章主线改动范围（强制声明）
+---
+
+
+
+
+
+
+
+
+
+
+
+
+
+---
+
+## 深入理解：Protocol 为什么是全链路的“同一种语言”
+
+### 白话理解 Protocol
+
+Protocol 就是“团队约定的统一表格”。
+
+- 你填什么字段，我就按什么字段处理。
+- 没有这张表，大家都在猜字段含义，系统必然越来越乱。
+
+### 例子：同一个 Tool 调用，为什么要标准化
+
+成功链路例子：
+
+1. 模型产出 `tool_call_id/tool_name/args`。
+2. Tool Runtime 按固定结构执行并返回 `ToolResult`。
+3. Engine 只认 `status/output/error`，无需猜测。
+
+失败链路例子：
+
+1. 某工具返回 `{"ok": true}`，另一个返回 `{"success": 1}`。
+2. Engine 里写满 if/else 兼容判断。
+3. 新增第三个工具后继续膨胀，最终不可维护。
+
+### 协议统一后数据怎么流
+
+```mermaid
+flowchart LR
+  A[Model/Planner] --> B[ToolCall]
+  B --> C[Tool Runtime]
+  C --> D[ToolResult]
+  D --> E[Engine]
+```
+
+### 实战读法
+
+1. 看字段时重点看“谁生产、谁消费、谁校验”。
+2. 关注 `error_code/retryable` 这种“执行决策字段”，不是装饰字段。
+3. 把协议当成“防回归边界”，不是文档摆设。
+
+## 本章主线改动范围
 
 ### 代码目录
 
@@ -485,14 +540,3 @@ uv run pytest tests/unit/test_protocol.py -q
 
 1. 第三章进入 Engine 主循环，严格实现：`plan -> act -> observe -> reflect -> update -> finish`。
 2. 你会看到 Protocol 如何被 Engine 实际消费，以及为什么 reflect 不应该被省略。
-
-
-
-
-
-
-
-
-
-
-
