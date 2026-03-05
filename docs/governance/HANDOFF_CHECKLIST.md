@@ -104,3 +104,5 @@
 72. [x] 已完成第01~04章“深入理解”章节位置重排：从文末后置追加改为正文前半段前置讲解（在主线改动范围/实施步骤前），保证阅读顺序自然。
 73. [x] 已完成第五章 `chain_runner.py` 讲解增强：补齐主流程拆解、成功/失败例子、流程图+时序图，以及工程取舍与边界说明。
 74. [x] 已将“主要代码讲解需达到 `chain_runner.py` 级别”写入黄金法则、章节模板与 AI 执行硬约束，后续章节按该标准统一执行。
+75. [x] 已创建并验证新技能 `publish-grade-article-auditor`（出版级审核+主动优化+代码零删减校验脚本）。
+76. [x] 已修复技能加载报错：`.agents/skills/publish-grade-article-auditor/SKILL.md` 改为 UTF-8 无 BOM（frontmatter 从首字节 `---` 开始），并同步将 `.agents/skills/tutorial-quality-checker/SKILL.md` 统一为 UTF-8 无 BOM。

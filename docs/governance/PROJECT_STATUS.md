@@ -196,3 +196,5 @@
 97. 已按用户反馈完成第01~04章结构重排：将“深入理解”从文末整体前移到正文前半段（进入主线改动范围/实施步骤前），改为先建立认知再看实现，消除“读到最后才补概念”的断层。
 98. 第五章已补齐 `chain_runner.py` 深度代码讲解：新增主流程拆解、成功/失败链路示例、链式数据流流程图与编排时序图，并补充工程取舍与高频失败边界说明，内容已自然融合至第4步正文。
 99. 已将“主要代码讲解深度统一到 `chain_runner.py` 级别”升级为黄金法则：同步写入 `docs/tutorials/_TUTORIAL_GOLD_STANDARD.md`、`docs/tutorials/_CHAPTER_TEMPLATE.md` 与 `docs/governance/AI_TASK_GUARDRAILS.md`。
+100. 已新增技能 `skills/publish-grade-article-auditor`：支持出版级文章深度审核与主动优化，内置“代码零删减”守卫脚本 `code_block_guard.py`（inventory/verify），用于优化前后自动校验代码块不丢失。
+101. 已修复技能加载失败问题：将 `.agents/skills/publish-grade-article-auditor/SKILL.md` 转换为 UTF-8 无 BOM，确保 YAML frontmatter 从首字节 `---` 开始可被解析；并同步校正 `.agents/skills/tutorial-quality-checker/SKILL.md` 为 UTF-8 无 BOM，避免同类隐患。
