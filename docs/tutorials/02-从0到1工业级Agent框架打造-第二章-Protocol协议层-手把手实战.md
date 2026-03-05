@@ -4,7 +4,7 @@
 
 1. 搭建 Protocol 组件的完整对象模型：`AgentMessage`、`ToolCall`、`ToolResult`、`ExecutionEvent`、`FinalAnswer`、`AgentState`。
 2. 建立“协议先行”的工程纪律：新能力先对齐协议，再写实现。
-3. 交付可独立运行的 主线（代码 + 测试），并与主线 `src/agent_forge` 保持一致。
+3. 交付可独立运行的主线（代码 + 测试），并与主线 `src/agent_forge` 保持一致。
 
 ## 架构位置说明（演进视角）
 
@@ -45,6 +45,26 @@ uv add --dev pytest
 uv sync --dev
 ```
 
+环境准备与缺包兜底（可直接复制）：
+
+```bash
+uv run pytest tests/unit/test_protocol.py -q
+```
+
+```powershell
+uv run pytest tests/unit/test_protocol.py -q
+```
+
+若 `uv` 在当前机器因缓存权限失败，可先验证主线逻辑是否正确：
+
+```bash
+python -m pytest tests/unit/test_protocol.py -q
+```
+
+```powershell
+python -m pytest tests/unit/test_protocol.py -q
+```
+
 ## 先讲“面”：为什么第二章必须先做 Protocol
 
 第一章我们解决的是“项目能启动”。  
@@ -74,22 +94,6 @@ flowchart TD
 
 这条链路你可以先记一句话：  
 所有输入输出，**都先落到协议对象**，再被各组件消费。
-
----
-
-
-
-
-
-
-
-
-
-
-
-
-
----
 
 ## 深入理解：Protocol 为什么是全链路的“同一种语言”
 
@@ -507,12 +511,6 @@ uv run pytest tests/unit/test_protocol.py -q
 ```
 
 
-PowerShell 等价命令：
-
-```powershell
-uv run pytest tests/unit/test_protocol.py -q
-```
-
 ## 增量闭环验证
 
 1. 协议闭环：`AgentState` 与核心对象可序列化/反序列化。
@@ -521,7 +519,9 @@ uv run pytest tests/unit/test_protocol.py -q
 
 ## 验证清单
 
-1.  `tests/unit/test_protocol.py` 测试通过。
+1. `tests/unit/test_protocol.py` 测试通过。
+2. `AgentState` 的 `trace_id/run_id/protocol_version` 自动生成并可追踪。
+3. 空白关键字段能稳定触发 `ValidationError`，边界校验有效。
 
 ## 常见问题
 

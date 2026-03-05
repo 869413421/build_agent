@@ -843,7 +843,7 @@ class ToolRuntime:
         return self._executor.execute(tool_call, spec, handler, principal, capabilities or set(), self._hooks)
 ```
 
-### 第 5 步补充讲解（通俗版）
+### 第 5 步工程讲解（通俗版）
 
 可以把 `ToolRuntime` 理解成“总调度台”，它不直接干重活，只负责三件事：
 
@@ -941,7 +941,7 @@ New-Item -ItemType File -Force "src\agent_forge\components\tool_runtime\__init__
 未来你接入天气、票务、ERP，都可以复用同样的参数校验 + 错误映射框架。
 3. 二者组合价值：一个 CPU 轻工具 + 一个外部 I/O 工具，正好覆盖 Tool Runtime 最核心的两类执行场景。
 
-### 补充讲解
+### 工程取舍与边界
 
 为什么工具放在 `infrastructure/tools` 而不是直接写在 `runtime.py`？
 
@@ -1012,8 +1012,8 @@ def run_tool_chain_once(runtime: ToolRuntime | None = None) -> dict[str, Any]:
 
 我们将利用 `tool_runtime_demo.py` 来证明 Tool Runtime 的沙盒拦截、函数调用和链接机制有效！
 
-### 添加config
-需要在[settings.py](../../src/agent_forge/components/tool_runtime/__init__.py)中添加tavily_api_key 配置
+### 添加配置
+需要在 [settings.py](../../src/agent_forge/support/config/settings.py) 中确认存在 `tavily_api_key` 配置项：
 ```bash
 tavily_api_key: str | None = Field(default=None, description="Tavily API Key")
 ```
@@ -1027,12 +1027,30 @@ tavily_api_key: str | None = Field(default=None, description="Tavily API Key")
 ```bash
 uv add tavily-python
 ```
+
+```powershell
+uv add tavily-python
+```
+
 ### 验证一：运行独立与链式工具 Demo
 
 ```bash
 uv run python examples/tool_runtime/tool_runtime_demo.py
 ```
 
+```powershell
+uv run python examples/tool_runtime/tool_runtime_demo.py
+```
+
+若 `uv` 在当前机器因缓存权限或网络策略失败，可先用 Python 兜底验证 Demo 主线：
+
+```bash
+python examples/tool_runtime/tool_runtime_demo.py
+```
+
+```powershell
+python examples/tool_runtime/tool_runtime_demo.py
+```
 
 **预期输出检查单：**
 
@@ -1065,7 +1083,7 @@ uv run pytest tests\unit\test_tool_runtime.py
 
 ---
 
-# 8️⃣ DoD (Definition of Done) Check
+# 8️⃣ 本章 DoD
 
 - [x] 代码层面：已经彻底实现包含 `Hook` 管理、超时剥离管控和核心链调用的 `ToolRuntime`。
 - [x] 测试层面：Demo 能无缝安全地执行 Python String 的 Ast 解析。
@@ -1073,5 +1091,6 @@ uv run pytest tests\unit\test_tool_runtime.py
 
 ---
 
-> 🚀 **Next Chapter Preview:** 
-> 在下一章中（《第六章：Memory 与状态留存》），我们将重点构建 Agent 的海马体组件——Memory。有了它，Agent 将具备长期记忆以及追踪短期会话流能力，彻底打通整个“无状态->有状态”的历史流闭环。
+## 下一章预告
+
+下一章进入 Observability：把 Tool Runtime 的执行轨迹统一接入 trace/log/metrics，形成“可回放、可定位、可验收”的生产观测闭环。

@@ -200,3 +200,8 @@
 101. 已修复技能加载失败问题：将 `.agents/skills/publish-grade-article-auditor/SKILL.md` 转换为 UTF-8 无 BOM，确保 YAML frontmatter 从首字节 `---` 开始可被解析；并同步校正 `.agents/skills/tutorial-quality-checker/SKILL.md` 为 UTF-8 无 BOM，避免同类隐患。
 102. 已按 `publish-grade-article-auditor` 完成第一章出版级增量优化：围绕 `pyproject.toml`、`cli.py`、`api/app.py`、`conftest.py`、`test_bootstrap.py` 补齐“主流程拆解 + 成功/失败链路 + 图示 + 工程取舍/边界”，并新增“环境准备与缺包兜底步骤（可复制命令）”。
 103. 第一章已完成“代码零删减”双阶段校验：优化前 inventory 记录 28 个代码块，优化后 verify 通过（before=28, now=36），确认未删除任何原有代码块。
+104. 已修复第一章 Mermaid 渲染兼容问题：将高风险图语法改为 11.12.0 稳定写法（纯文本节点、去除易歧义符号与括号别名），消除 `Syntax error in text`。
+105. 已将 Mermaid 11.12.0 兼容规则固化到标准与护栏：`docs/tutorials/_TUTORIAL_GOLD_STANDARD.md`、`docs/tutorials/_CHAPTER_TEMPLATE.md`、`docs/governance/AI_TASK_GUARDRAILS.md`，后续教程优化默认执行该约束。
+106. 已使用 `publish-grade-article-auditor` 完成第 02~05 章出版级增量优化：保守精简重复叙述、补齐工程可执行兜底命令、统一术语与承接文案，不删减原有代码块。
+107. 第 02~05 章已完成代码零删减校验并全部通过：`02(before=21, now=24)`、`03(before=22, now=22)`、`04(before=74, now=77)`、`05(before=45, now=49)`。
+108. 第 05 章已修正章节承接与运行说明一致性：补齐 PowerShell/`python` 兜底命令，统一 DoD 标题风格，并将下一章预告调整为 Observability 主线。

@@ -184,6 +184,13 @@ New-Item -ItemType File src/agent_forge/<component>/<file>.py
 5. 历史章节升级时仅允许追加内容，不得删减原文与原代码。
 6. 禁止“补丁式”写法（例如“本次补充/修复说明”独立段），新增内容必须自然融合进章节主线。
 
+补充约束（Mermaid 11.12.0 兼容）：
+
+1. Mermaid 仅使用 11.12.0 稳定子集（优先 `flowchart TD/LR`、`sequenceDiagram`）。
+2. 节点文案使用纯文本，避免 `[/path]`、`[{k:v}]`、带括号 participant 别名等易歧义写法。
+3. 表达接口路径或 JSON 时，改写为语义文本（如 `Health Endpoint`、`Status OK`）。
+4. 交付前必须至少人工预览一次 Mermaid 渲染，确保无 `Syntax error in text`。
+
 ---
 
 ## 第 4 步：补齐测试（必须覆盖新增能力）

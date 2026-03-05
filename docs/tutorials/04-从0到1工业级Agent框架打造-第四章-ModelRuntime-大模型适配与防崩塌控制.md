@@ -48,8 +48,6 @@ uv sync --dev
 
 如果你之前已经装过这些包，重复执行不会破坏环境。
 
-
-
 ## 本章怎么学（防止读懵）
 
 1. 先看“术语白话”与主流程图，知道每层职责。
@@ -78,11 +76,6 @@ flowchart TD
   G -->|失败| H[注入修复提示并重试]
   H --> B
 ```
-
----
-
-
----
 
 ## 深入理解：Model Runtime 为什么是“模型能力”和“工程稳定性”之间的翻译层
 
@@ -2135,6 +2128,13 @@ uv run pytest tests/unit/test_model_runtime.py -q
 
 ```bash
 uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py tests/unit/test_model_runtime.py -q
+```
+
+
+若 `uv` 因缓存权限或网络策略失败，可先用 Python 兜底验证本章主线：
+
+```bash
+python -m pytest tests/unit/test_model_runtime.py -q
 ```
 
 ## 增量闭环验证

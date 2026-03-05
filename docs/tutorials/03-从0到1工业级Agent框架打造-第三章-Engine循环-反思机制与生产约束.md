@@ -43,8 +43,6 @@ flowchart TD
 2. 你可以正常运行：`uv run pytest tests/unit/test_protocol.py -q`。
 3. 当前命令执行目录：仓库根目录（包含 `src/`、`tests/`、`docs/`）。
 
-
-
 ## 本章怎么学（先不“啃源码”）
 
 如果你在这一章有“突然变难”的感觉，这是正常的。
@@ -124,14 +122,6 @@ flowchart TD
 3. 超时控制：为什么 run 预算检查必须进入重试循环。  
 4. 扩展性：为什么执行器必须可注入。  
 5. 观测成本：为什么 trace 要摘要化而不是全量塞原文。  
-
----
-
----
-
-
-
----
 
 ## 深入理解：Engine Loop 为什么必须把 reflect 做成硬机制
 
@@ -1206,11 +1196,6 @@ uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q
 
 ### 3. `uv run pytest` 报 `program not found`？
 先执行 `uv add --dev pytest` 和 `uv sync --dev`。
-
----
-
-
-
 
 ## 本章 DoD
 
