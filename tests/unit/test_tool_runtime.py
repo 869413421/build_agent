@@ -119,6 +119,9 @@ def test_tool_runtime_should_return_timeout_error() -> None:
     assert result.status == "error"
     assert result.error is not None
     assert result.error.error_code == "TOOL_TIMEOUT"
+    records = runtime.get_records()
+    assert len(records) == 1
+    assert records[0].status == "error"
 
 
 def test_python_math_tool_should_work_and_block_unsafe_expr() -> None:

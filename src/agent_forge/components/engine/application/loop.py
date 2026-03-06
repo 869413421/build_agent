@@ -22,6 +22,9 @@ from typing import Any, Awaitable, Callable, Literal
 from pydantic import BaseModel, Field
 
 from agent_forge.components.protocol import AgentState, ErrorInfo, ExecutionEvent, FinalAnswer
+from agent_forge.support.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class EngineLimits(BaseModel):
@@ -76,6 +79,7 @@ ReflectFn = Callable[
     [AgentState, PlanStep, int, StepOutcome], ReflectDecision | Awaitable[ReflectDecision]
 ]
 ActExecutor = Callable[[ActFn, AgentState, PlanStep, int, int], Awaitable[StepOutcome]]
+EngineEventListener = Callable[[ExecutionEvent], None]
 
 
 @dataclass
@@ -100,12 +104,14 @@ class EngineLoop:
         limits: EngineLimits | None = None,
         now_ms: Callable[[], int] | None = None,
         act_executor: ActExecutor | None = None,
+        event_listener: EngineEventListener | None = None,
     ) -> None:
         self.limits = limits or EngineLimits()
         self._now_ms = now_ms or (lambda: int(monotonic() * 1000))
         self._executor = ThreadPoolExecutor(max_workers=self.limits.executor_max_workers)
         self._inflight_guard = asyncio.Semaphore(self.limits.max_inflight_acts)
         self._act_executor = act_executor or self._default_act_executor
+        self._event_listener = event_listener
 
     def close(self) -> None:
         """释放共享执行池资源。"""
@@ -406,16 +412,20 @@ class EngineLoop:
     ) -> None:
         """统一写事件，确保 trace 结构一致。"""
 
-        state.events.append(
-            ExecutionEvent(
-                trace_id=state.trace_id,
-                run_id=state.run_id,
-                step_id=step_id,
-                event_type=event_type,
-                payload=payload,
-                error=error,
-            )
+        event = ExecutionEvent(
+            trace_id=state.trace_id,
+            run_id=state.run_id,
+            step_id=step_id,
+            event_type=event_type,
+            payload=payload,
+            error=error,
         )
+        state.events.append(event)
+        if self._event_listener is not None:
+            try:
+                self._event_listener(event)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("engine event listener failed: %s", exc)
 
     def _build_final_answer(self, stats: _RunStats, started_at: int) -> FinalAnswer:
         """构造通用最终输出。"""

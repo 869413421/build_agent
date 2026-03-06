@@ -202,3 +202,26 @@ def test_engine_backpressure_error_when_inflight_exceeded() -> None:
     assert any(e.error and e.error.error_code == "ACT_BACKPRESSURE" for e in updated.events if e.event_type == "error")
 
 
+def test_engine_should_not_fail_when_event_listener_raises() -> None:
+    """监听器异常不应影响主流程完成。"""
+
+    def listener(_: ExecutionEvent) -> None:
+        raise RuntimeError("listener boom")
+
+    engine = EngineLoop(
+        limits=EngineLimits(max_steps=1, time_budget_ms=5000),
+        event_listener=listener,
+    )
+    state = build_initial_state("session_engine_listener")
+
+    def plan_fn(_: AgentState) -> list[dict]:
+        return [{"id": "s-a", "name": "step-a"}]
+
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+        return StepOutcome(status="ok", output={"step": step.name, "idx": step_idx})
+
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn))
+    assert updated.final_answer is not None
+    assert updated.final_answer.status == "success"
+
+

@@ -2,16 +2,16 @@
 
 ## 当前阶段
 
-- 阶段：仓库结构重构完成（`agent_forge` 命名、`src/` 布局、组件分层落地）
-- 日期：2026-03-02
+- 阶段：Observability 组件落地完成（代码 + 测试 + 教程）
+- 日期：2026-03-05
 
 ## 已完成组件
 
 - [x] Protocol
 - [x] Engine（loop）
 - [x] Model Runtime（LLM Adapter）
-- [x] Tool Runtime（API Adapter，代码已完成，教程待审核后编写）
-- [ ] Observability
+- [x] Tool Runtime（API Adapter）
+- [x] Observability
 - [ ] Context Engineering
 - [ ] Retrieval
 - [ ] Memory
@@ -20,7 +20,7 @@
 
 ## 进行中组件（唯一）
 
-- Tool Runtime（API Adapter）（代码与测试已落地，等待教程小步）
+- Context Engineering（上下文编排与预算治理）
 
 ## 已通过审核的小步
 
@@ -75,7 +75,7 @@
 
 ## 下一步唯一任务
 
-- 若本步审核通过，进入第五章教程撰写与文档同步（不改代码主干）。
+- 若本步审核通过，进入第七章 Context Engineering 组件实现与教程同步。
 
 ## 阻塞项
 
@@ -209,3 +209,41 @@
 110. 第 04 章本轮复优化已通过代码零删减校验：`before=75, now=80`，确认未删除任何原有代码块。
 111. Re-optimized Chapter 05 with `publish-grade-article-auditor`: added execution-closure sections for environment fallback, run commands, verification checklist, and FAQ while preserving narrative continuity.
 112. Chapter 05 passed code-zero-deletion verification: `code_block_guard verify` returned `before=49, now=56, PASS`, confirming no original code block was removed.
+113. 已完成 Observability 组件主干实现：新增 `domain/application/infrastructure` 分层（采样、脱敏、trace/metrics/replay 存储、导出与聚合指标）。
+114. Engine 已新增可选 `event_listener` 接入点（监听失败仅告警不影响主流程），满足观测横切接入与向后兼容。
+115. 已新增 `ToolRuntimeObservabilityHook` 并打通 ToolRuntime 事件与工具结果录制链路。
+116. 已新增 Observability 单测 `tests/unit/test_observability.py`，并补充 Engine 监听容错测试。
+117. 回归结果：`uv run --no-sync pytest -q` 通过（53 passed）。
+118. 已新增第六章教程：`docs/tutorials/06-从0到1工业级Agent框架打造-第六章-Observability-可观测与回放闭环.md`。
+119. README 课程索引已同步：第 05/06 章状态改为已完成并补齐链接。
+120. 已完成 Observability 质检修复：工具观测上下文改为任务级隔离（`ContextVar`），消除并发 run 串写 `trace_id/run_id` 风险。
+121. 已修复 replay 完整性：工具失败结果也进入 `after_execute` 收口并写入回放记录，不再只记录成功调用。
+122. Tool Runtime 执行器错误路径已统一持久化记录（含 timeout/执行异常/前置校验失败），观测数据与执行记录语义对齐。
+123. 已补充并发隔离与失败回放回归测试（`test_observability_should_not_mix_context_across_concurrent_tasks`、`test_observability_should_record_failed_tool_result_in_replay`、`test_tool_runtime_should_return_timeout_error` 记录断言）。
+124. 最新全量回归：`uv run --no-sync pytest -q` 通过（55 passed）。
+125. 已按用户反馈重构第六章教程结构，补齐模板必需段落（目标、前置条件、环境兜底、运行命令、验证清单、常见问题、DoD、下一章预告）。
+126. 第六章已从“占位式源码引用”升级为“可复制可运行的完整代码讲解版”，核心文件与测试均提供全文代码块。
+127. 已完成第六章教程质检脚本复检：`tutorial-quality-checker` 结构检查通过。
+128. 已完成第六章代码块守卫校验：`code_block_guard verify` 通过（before=33, now=33），确认未发生代码块删减。
+129. 根据用户反馈，第六章已追加“术语白话卡片”，先讲清 trace/metric/replay/sampling/redaction 的工程语义，再进入代码实现。
+130. 第六章已追加“两条真实链路案例（成功+失败）”，并给出输入输出级别的可验证结果，避免抽象讲解。
+131. 第六章已追加 runtime 主流程 1/2/3/4 分步走读与 hook 高风险踩坑点说明，强化“主流程机制 + 失败推演 + 取舍边界”。
+132. 第六章本轮复检结果：`tutorial-quality-checker` 再次通过（PASS）。
+133. 已修复第六章文件创建命令顺序：改为“先创建目录，再创建文件”，并逐条对应讲解步骤。
+134. 已补齐第六章 Python 包初始化文件创建命令：`observability/__init__.py`、`domain/__init__.py`、`application/__init__.py`、`infrastructure/__init__.py`。
+135. 已按用户反馈重排第六章创建步骤：不再把所有创建命令堆在第 2 步，改为第 3~9 步“讲到哪创建到哪”。
+136. 第六章创建命令已统一为“先创建目录，再创建 `__init__.py`（包目录），再创建当前文件”的顺序。
+137. 第六章重排后已再次通过 `tutorial-quality-checker` 结构检查（PASS）。
+138. 已按用户要求将第六章所有命令块统一改为 ` ```codex ` 包裹格式，不再使用 `bash/powershell` 代码块标签。
+139. 已重建第六章文档内容并修复编码污染问题，确保中文标题与正文可正常显示。
+140. 已修复第六章内容丢失问题：7 段占位代码块已恢复为对应源码与测试的完整代码内容。
+141. 第六章当前命令块统一为 ` ```codex ` 格式，同时保留“先目录、再 `__init__.py`、再目标文件”的创建顺序。
+142. 第六章修复后已通过 `tutorial-quality-checker` 结构复检（PASS）。
+143. 已修复第六章 Markdown 代码栅栏错位：为缺失的 python 代码块补全结束栅栏，消除‘正文被代码块吞并’问题。
+144. 第六章修复后已通过双重复检：代码栅栏配对检查 FENCES_BALANCED，	utorial-quality-checker 结构检查 PASS。
+145. 已按用户要求将第六章讲解深度对标第五章：为 schemas/interfaces/policies/memory/runtime/hooks/tests 全部补齐主流程拆解、成功/失败案例与工程取舍说明。
+146. 第六章本轮升级已通过三项校验：code_block_guard 零删减 PASS（before=19, now=20）、tutorial-quality-checker PASS、代码栅栏配对 FENCES_BALANCED。
+147. 已修复第六章中文编码污染：删除 7 段异常 ? 讲解块并替换为正常中文深度讲解，当前 ? 匹配计数为 0。
+148. 修复后校验通过：tutorial-quality-checker PASS，code_block_guard verify PASS（before=19, now=20）。
+149. 已按用户反馈修正第六章表述歧义：明确 Engine 提供的是 event_listener 注入点，engine_event_listener 为 ObservabilityRuntime 提供的回调实现。
+150. 已新增 examples/observability/observability_demo.py 并在第六章加入完整示例代码与运行命令；本地以 PYTHONPATH=src python ... 验证可运行。

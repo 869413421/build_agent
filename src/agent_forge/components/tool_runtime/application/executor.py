@@ -237,7 +237,7 @@ class ToolExecutor:
                 if should_retry:
                     attempt += 1
                     continue
-                return self._build_error_result(call, started_at, hooked)
+                return self._finalize_error(spec, call, actor, started_at, attempt, hooked)
 
     async def _run_async_with_retry(
         self, spec: ToolSpec, call: ToolCall, started_at: float, actor: str
@@ -275,7 +275,7 @@ class ToolExecutor:
                 if should_retry:
                     attempt += 1
                     continue
-                return self._build_error_result(call, started_at, hooked)
+                return self._finalize_error(spec, call, actor, started_at, attempt, hooked)
 
     def _handle_retry_error(
         self, exc: ToolRuntimeError, call: ToolCall, attempt: int
@@ -337,10 +337,8 @@ class ToolExecutor:
                 ),
             )
         )
-        result = self._build_error_result(call, started_at, hooked)
         spec = self._safe_spec(call.tool_name)
-        self.persist_result(spec, call, actor, result)
-        return result
+        return self._finalize_error(spec, call, actor, started_at, attempt=0, error=hooked)
 
     def _finalize_success(
         self,
@@ -380,6 +378,45 @@ class ToolExecutor:
                 attempt=attempt,
                 latency_ms=result.latency_ms,
                 payload={"status": result.status},
+            )
+        )
+        return result
+
+    def _finalize_error(
+        self,
+        spec: ToolSpec,
+        call: ToolCall,
+        actor: str,
+        started_at: float,
+        attempt: int,
+        error: ToolRuntimeError,
+    ) -> ToolResult:
+        """收尾失败结果并持久化。
+
+        Args:
+            spec: 工具规格。
+            call: 当前工具调用。
+            actor: 执行主体。
+            started_at: 执行起始时间。
+            attempt: 当前尝试次数。
+            error: 归一化错误对象。
+
+        Returns:
+            ToolResult: 结构化失败结果。
+        """
+
+        result = self._build_error_result(call, started_at, error)
+        result = self.hooks.after_execute(result)
+        self.persist_result(spec, call, actor, result)
+        self.hooks.emit_event(
+            ToolRuntimeEvent(
+                event_type="after_execute",
+                tool_call_id=call.tool_call_id,
+                tool_name=call.tool_name,
+                attempt=attempt,
+                latency_ms=result.latency_ms,
+                payload={"status": result.status},
+                error=result.error,
             )
         )
         return result

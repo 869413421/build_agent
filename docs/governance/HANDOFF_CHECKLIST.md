@@ -126,3 +126,42 @@
 76. [x] 已修复技能加载报错：`.agents/skills/publish-grade-article-auditor/SKILL.md` 改为 UTF-8 无 BOM（frontmatter 从首字节 `---` 开始），并同步将 `.agents/skills/tutorial-quality-checker/SKILL.md` 统一为 UTF-8 无 BOM。
 77. [x] Re-optimized Chapter 05 docs: added environment fallback, run commands, verification checklist, and FAQ supplement; original code blocks kept intact.
 78. [x] Code-block guard verification completed for Chapter 05: `before=49, now=56, PASS`.
+
+## 会话补充（2026-03-05 Observability）
+
+79. [x] 本次仅实现一个新组件（Observability），未跨组件并行开发。
+80. [x] 已提交 Observability 对应代码与测试（`src/agent_forge/components/observability/`、`tests/unit/test_observability.py`）。
+81. [x] 已完成 Engine 可选事件监听接入并验证监听器异常不影响主流程。
+82. [x] 已完成 ToolRuntime hook 接入并验证 trace/replay 链路可用。
+83. [x] 已完成全量回归：`uv run --no-sync pytest -q`（53 passed）。
+84. [x] 已新增第六章教程并与代码路径同步。
+85. [x] 已更新 `docs/governance/PROJECT_STATUS.md` 与 `README.md` 课程索引状态。
+86. [x] 已完成 Observability 质检问题修复：工具观测上下文改为任务级隔离（`ContextVar`），避免并发串 run。
+87. [x] 已补齐失败工具回放：错误结果也会进入 replay，并在 ToolRuntime records 持久化。
+88. [x] 已新增并发隔离与失败回放回归测试，最新全量回归通过（55 passed）。
+89. [x] 已按用户反馈重构第六章教程：从占位式说明改为完整可运行代码讲解，结构按模板补齐。
+90. [x] 第六章已补齐“环境准备与缺包兜底步骤”，并提供 Bash/PowerShell 双命令。
+91. [x] 第六章已通过教程结构硬约束检查：`python .agents/skills/tutorial-quality-checker/scripts/check_tutorial_markers.py --file docs/tutorials/06-从0到1工业级Agent框架打造-第六章-Observability-可观测与回放闭环.md`。
+92. [x] 第六章已通过代码块零删减校验：`code_block_guard verify` 结果 `before=33, now=33, PASS`。
+93. [x] 已根据用户反馈补齐第六章“术语白话卡片”，先讲概念再讲代码。
+94. [x] 已补齐第六章真实成功/失败案例（输入输出级），用于对照 runtime 与 hook 行为。
+95. [x] 已补齐第六章 runtime 分步走读（1/2/3/4）与 hook 踩坑说明，强化失败推演与工程边界。
+96. [x] 第六章本轮复检通过：`tutorial-quality-checker` PASS。
+97. [x] 已修复第六章创建命令顺序：先建目录再建文件，且按“讲一个创建一个”组织。
+98. [x] 已补齐第六章相关 `__init__.py` 创建命令，避免手把手跟做时漏建包入口文件。
+99. [x] 已将第六章创建命令从“集中在第 2 步”改为“第 3~9 步就地创建”，实现讲一步建一步。
+100. [x] 第六章创建顺序已统一为：先目录 -> 再 `__init__.py` -> 再目标文件。
+101. [x] 重排后已复检通过：`tutorial-quality-checker` PASS。
+102. [x] 第六章命令块格式已统一为 ` ```codex `（按用户要求）。
+103. [x] 第六章文档已重建并修复编码显示问题，中文可读性恢复正常。
+104. [x] 已修复第六章“内容全部丢失”问题：占位代码块全部恢复为完整源码与测试代码。
+105. [x] 第六章命令块维持 ` ```codex ` 统一格式，且创建顺序符合“目录 -> `__init__.py` -> 目标文件”。
+106. [x] 修复后再次通过教程结构检查：`tutorial-quality-checker` PASS。
+107. 已修复第六章代码块与正文包裹错位：补齐所有缺失的代码块结束栅栏，正文段落恢复为普通 Markdown。
+108. 修复后复检结果：代码栅栏配对正常（FENCES_BALANCED），教程结构检查通过（PASS）。
+109. [x] 已完成第六章对标第五章的深度升级：关键代码段讲解从简要说明提升为主流程+成功/失败案例+工程取舍。
+110. [x] 第六章升级后校验通过：code_block_guard verify PASS（before=19, now=20）、教程结构 PASS、代码栅栏 FENCES_BALANCED。
+111. [x] 已清理第六章中文乱码（问号污染）并替换为可读中文讲解，7 段污染区域全部修复。
+112. [x] 乱码修复后复检通过：问号计数=0，教程结构 PASS，代码块零删减 PASS。
+113. [x] 已修正文档概念歧义：Engine 侧为 event_listener 回调注入，不是 Engine 自身方法 engine_event_listener。
+114. [x] 已新增并验证第六章 examples 脚本：examples/observability/observability_demo.py（成功+失败工具路径与 Engine 路径均可观测）。
