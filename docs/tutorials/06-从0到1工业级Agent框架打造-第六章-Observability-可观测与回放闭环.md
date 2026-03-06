@@ -59,6 +59,7 @@ python -m pytest tests/unit/test_observability.py -q
 6. [memory.py](../../src/agent_forge/components/observability/infrastructure/memory.py)
 7. [test_observability.py](../../tests/unit/test_observability.py)
 8. [observability_demo.py](../../examples/observability/observability_demo.py)
+9. [loop.py](../../src/agent_forge/components/engine/application/loop.py)
 
 ## 实施步骤
 
@@ -86,6 +87,7 @@ sequenceDiagram
 
 1. `engine_event_listener` 不是 Engine 的方法，它是 `ObservabilityRuntime` 提供的回调函数。
 2. Engine 真正暴露的是构造参数 `event_listener`，注入方式是 `EngineLoop(..., event_listener=observability.engine_event_listener)`。
+3. 对应代码变更点在 [loop.py](../../src/agent_forge/components/engine/application/loop.py)：`EngineLoop.__init__` 新增 `event_listener` 参数，并在事件写入时调用该回调。
 
 ### 第 2 步：创建规则（重要）
 
@@ -111,6 +113,88 @@ New-Item -ItemType Directory -Force src/agent_forge/components/observability/dom
 New-Item -ItemType File src/agent_forge/components/observability/__init__.py
 New-Item -ItemType File src/agent_forge/components/observability/domain/__init__.py
 New-Item -ItemType File src/agent_forge/components/observability/domain/schemas.py
+```
+
+源码补充：[__init__.py](../../src/agent_forge/components/observability/__init__.py)
+
+```codex
+touch src/agent_forge/components/observability/__init__.py
+New-Item -ItemType File src/agent_forge/components/observability/__init__.py
+```
+
+```python
+"""Observability component exports."""
+
+from agent_forge.components.observability.application import (
+    MetricsSink,
+    ObservabilityRuntime,
+    ReplayStore,
+    ToolRuntimeObservabilityHook,
+    TraceSink,
+)
+from agent_forge.components.observability.domain import (
+    ExportEnvelope,
+    MetricPoint,
+    RedactionPolicy,
+    ReplayBundle,
+    ReplayStep,
+    SamplingPolicy,
+    TraceRecord,
+)
+from agent_forge.components.observability.infrastructure import (
+    InMemoryMetricsSink,
+    InMemoryReplayStore,
+    InMemoryTraceSink,
+)
+
+__all__ = [
+    "TraceSink",
+    "MetricsSink",
+    "ReplayStore",
+    "ObservabilityRuntime",
+    "ToolRuntimeObservabilityHook",
+    "SamplingPolicy",
+    "RedactionPolicy",
+    "TraceRecord",
+    "MetricPoint",
+    "ReplayStep",
+    "ReplayBundle",
+    "ExportEnvelope",
+    "InMemoryTraceSink",
+    "InMemoryMetricsSink",
+    "InMemoryReplayStore",
+]
+```
+
+源码补充：[__init__.py](../../src/agent_forge/components/observability/domain/__init__.py)
+
+```codex
+touch src/agent_forge/components/observability/domain/__init__.py
+New-Item -ItemType File src/agent_forge/components/observability/domain/__init__.py
+```
+
+```python
+"""Observability 领域模型导出。"""
+
+from agent_forge.components.observability.domain.schemas import (
+    ExportEnvelope,
+    MetricPoint,
+    RedactionPolicy,
+    ReplayBundle,
+    ReplayStep,
+    SamplingPolicy,
+    TraceRecord,
+)
+
+__all__ = [
+    "SamplingPolicy",
+    "RedactionPolicy",
+    "TraceRecord",
+    "MetricPoint",
+    "ReplayStep",
+    "ReplayBundle",
+    "ExportEnvelope",
+]
 ```
 
 ```python
@@ -242,6 +326,32 @@ touch src/agent_forge/components/observability/application/interfaces.py
 New-Item -ItemType Directory -Force src/agent_forge/components/observability/application
 New-Item -ItemType File src/agent_forge/components/observability/application/__init__.py
 New-Item -ItemType File src/agent_forge/components/observability/application/interfaces.py
+```
+
+源码补充：[__init__.py](../../src/agent_forge/components/observability/application/__init__.py)
+
+```codex
+touch src/agent_forge/components/observability/application/__init__.py
+New-Item -ItemType File src/agent_forge/components/observability/application/__init__.py
+```
+
+```python
+"""Observability 应用层导出。"""
+
+from agent_forge.components.observability.application.hooks import ToolRuntimeObservabilityHook
+from agent_forge.components.observability.application.interfaces import MetricsSink, ReplayStore, TraceSink
+from agent_forge.components.observability.application.policies import Redactor, Sampler
+from agent_forge.components.observability.application.runtime import ObservabilityRuntime
+
+__all__ = [
+    "TraceSink",
+    "MetricsSink",
+    "ReplayStore",
+    "Sampler",
+    "Redactor",
+    "ObservabilityRuntime",
+    "ToolRuntimeObservabilityHook",
+]
 ```
 
 ```python
@@ -477,6 +587,25 @@ touch src/agent_forge/components/observability/infrastructure/memory.py
 New-Item -ItemType Directory -Force src/agent_forge/components/observability/infrastructure
 New-Item -ItemType File src/agent_forge/components/observability/infrastructure/__init__.py
 New-Item -ItemType File src/agent_forge/components/observability/infrastructure/memory.py
+```
+
+源码补充：[__init__.py](../../src/agent_forge/components/observability/infrastructure/__init__.py)
+
+```codex
+touch src/agent_forge/components/observability/infrastructure/__init__.py
+New-Item -ItemType File src/agent_forge/components/observability/infrastructure/__init__.py
+```
+
+```python
+"""Observability 基础设施实现导出。"""
+
+from agent_forge.components.observability.infrastructure.memory import (
+    InMemoryMetricsSink,
+    InMemoryReplayStore,
+    InMemoryTraceSink,
+)
+
+__all__ = ["InMemoryTraceSink", "InMemoryMetricsSink", "InMemoryReplayStore"]
 ```
 
 ```python
@@ -1475,6 +1604,10 @@ uv run python examples/observability/observability_demo.py
 1. replay 只有成功记录：错误路径没有进入 `after_execute` 收口。
 2. 并发串线：没有使用 `ContextVar` 做任务级上下文隔离。
 3. 指标失真：采样口径与门禁口径混用。
+4. 运行 `test_observability_should_record_failed_tool_result_in_replay` 失败，`replay.tool_records` 为空：
+1. 先确认 [hooks.py](../../src/agent_forge/components/observability/application/hooks.py) 中 `on_event(event_type=\"error\")` 有兜底录制逻辑。
+2. 再确认 [executor.py](../../src/agent_forge/components/tool_runtime/application/executor.py) 错误路径会走 `_finalize_error -> hooks.after_execute` 收口。
+3. 如果你是按教程手工搭建，优先重新对齐这两个文件，再执行 `uv run --no-sync pytest tests/unit/test_observability.py -q`。
 
 ## 本章 DoD
 

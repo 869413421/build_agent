@@ -165,3 +165,9 @@
 112. [x] 乱码修复后复检通过：问号计数=0，教程结构 PASS，代码块零删减 PASS。
 113. [x] 已修正文档概念歧义：Engine 侧为 event_listener 回调注入，不是 Engine 自身方法 engine_event_listener。
 114. [x] 已新增并验证第六章 examples 脚本：examples/observability/observability_demo.py（成功+失败工具路径与 Engine 路径均可观测）。
+115. [x] 第六章已补齐 observability/domain/application/infrastructure 四个 __init__.py 的完整代码与命令。
+116. [x] 第五章已自然补充 	est_tool_runtime.py 步骤（命令+完整代码+讲解），不再出现按教程执行缺失文件。
+117. [x] 第五章已补齐 conftest.py 教学步骤并与 test_tool_runtime.py 顺序对齐，消除 FakeTavilyClient 缺失问题。
+118. [x] 第五章已补齐 tests 包初始化文件教学步骤，避免 test 包导入报错。
+119. [x] 已完成 failed-tool replay 空记录兼容修复（hooks error-event fallback）并新增单测覆盖。
+120. [x] 第六章已同步 loop.py 变更说明与 test_observability 失败排查说明。

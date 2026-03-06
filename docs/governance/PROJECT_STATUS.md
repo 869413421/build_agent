@@ -247,3 +247,9 @@
 148. 修复后校验通过：tutorial-quality-checker PASS，code_block_guard verify PASS（before=19, now=20）。
 149. 已按用户反馈修正第六章表述歧义：明确 Engine 提供的是 event_listener 注入点，engine_event_listener 为 ObservabilityRuntime 提供的回调实现。
 150. 已新增 examples/observability/observability_demo.py 并在第六章加入完整示例代码与运行命令；本地以 PYTHONPATH=src python ... 验证可运行。
+151. 已补齐第六章 4 个 __init__.py 的完整源码块与创建命令，消除读者按教程创建后 import 报错问题。
+152. 已将第五章 	est_tool_runtime.py 以主线步骤自然补齐：新增创建命令、完整代码与代码讲解，消除读者执行时缺文件问题。
+153. 第五章已新增 tests/unit/conftest.py 主线步骤（创建命令+完整代码+讲解），并将 test_tool_runtime.py 顺延为下一步，避免读者按教程执行时导入失败。
+154. 第五章已补充 tests/__init__.py 与 tests/unit/__init__.py 主线步骤（创建命令+完整代码），确保 tests 包绝对导入路径稳定。
+155. 已修复用户反馈的 failed-tool replay 空记录问题：增强 ToolRuntimeObservabilityHook，在 error 事件阶段做兼容兜底录制，并补充回归测试。
+156. 第六章已同步说明 loop.py 变更（EngineLoop event_listener 注入点）与该失败用例排错路径。
