@@ -181,3 +181,16 @@
 128. [x] 已完成二轮质检修复：适配器层屏蔽内部 extra 字段透传（context_budget_report/citations/tools）。
 129. [x] 已新增 `test_adapter_should_not_forward_internal_context_extras` 回归用例并通过。
 130. [x] 已执行最新全量回归：uv run --no-sync pytest -q（65 passed）。
+131. [x] 已完成第七章教程正文编写：`docs/tutorials/07-从0到1工业级Agent框架打造-第七章-ContextEngineering-上下文编排与预算治理.md`。
+132. [x] 第七章教程已补齐 `Context Engineering` 的主流程说明、完整源码、测试代码、失败模式与 DoD。
+133. [x] 第七章教程命令块已统一使用 ` ```codex `，并按“目录 -> __init__.py -> 目标文件”的顺序写入。
+134. [x] `README.md` 课程索引已更新，第 07 章状态改为已完成并补齐链接。
+135. [x] `docs/governance/PROJECT_STATUS.md` 已同步记录本轮教程交付与索引更新。
+136. [x] 已新增第七章 examples 示例：`examples/context_engineering/context_engineering_demo.py`。
+137. [x] 已新增第七章示例测试：`tests/unit/test_context_engineering_demo.py`。
+138. [x] examples 目录保持非包用法，已删除多余 `__init__.py`，示例测试改为按文件路径加载脚本。
+139. [x] 第七章教程已追加 examples 主线步骤、完整示例代码与退化路径讲解。
+140. [x] 最新全量回归已通过：`uv run --no-sync pytest -q`（67 passed）。
+141. [x] 已完成第七章教程精修一轮：重点加厚 `policies.py`、`runtime.py`、`hooks.py` 三段讲解，补齐主流程时间线、Mermaid 图、成功/失败链路、工程取舍与边界说明。
+142. [x] 已修复第七章本轮新增讲解段落的中文编码污染，问号计数已清零（`???=0`，`??=0`）。
+143. [x] 第七章本轮精修已通过代码块零删减校验：`code_block_guard verify` PASS（before=40, now=43）。

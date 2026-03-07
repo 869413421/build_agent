@@ -34,7 +34,7 @@
 | 04 | Model Runtime：大模型适配与防崩塌控制 | 已完成 | [第 04 章](docs/tutorials/04-从0到1工业级Agent框架打造-第四章-ModelRuntime-大模型适配与防崩塌控制.md) |
 | 05 | Tool Runtime（API Adapter） | 已完成 | [第 05 章](docs/tutorials/05-从0到1工业级Agent框架打造-第五章-ToolRuntime-函数调用与隔离执行.md) |
 | 06 | Observability | 已完成 | [第 06 章](docs/tutorials/06-从0到1工业级Agent框架打造-第六章-Observability-可观测与回放闭环.md) |
-| 07 | Context Engineering | 规划中 | 待发布 |
+| 07 | Context Engineering | 已完成 | [第 07 章](docs/tutorials/07-从0到1工业级Agent框架打造-第七章-ContextEngineering-上下文编排与预算治理.md) |
 | 08 | Retrieval | 规划中 | 待发布 |
 | 09 | Memory | 规划中 | 待发布 |
 | 10 | Evaluator | 规划中 | 待发布 |

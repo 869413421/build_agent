@@ -12,7 +12,7 @@
 - [x] Model Runtime（LLM Adapter）
 - [x] Tool Runtime（API Adapter）
 - [x] Observability
-- [ ] Context Engineering
+- [x] Context Engineering
 - [ ] Retrieval
 - [ ] Memory
 - [ ] Evaluator
@@ -20,7 +20,7 @@
 
 ## 进行中组件（唯一）
 
-- Context Engineering（上下文编排与预算治理）
+- Retrieval
 
 ## 已通过审核的小步
 
@@ -75,7 +75,7 @@
 
 ## 下一步唯一任务
 
-- 若本步审核通过，进入第七章 Context Engineering 组件实现与教程同步。
+- 若本步审核通过，进入第八章 Retrieval 组件实现与教程同步。
 
 ## 阻塞项
 
@@ -264,3 +264,13 @@
 165. 已完成二轮质检修复：ModelRuntime 适配器过滤内部 extra 字段（context_budget_report/citations/tools），避免 Context Engineering 内部字段透传到厂商 API。
 166. 已修复 Context Engineering 策略层类型导入问题：`policies.py` 补回 `typing.Any`，消除静态检查错误。
 167. 已新增回归测试 `test_adapter_should_not_forward_internal_context_extras` 并通过；全量回归 `uv run --no-sync pytest -q` 通过（65 passed）。
+168. 已完成第七章教程：`docs/tutorials/07-从0到1工业级Agent框架打造-第七章-ContextEngineering-上下文编排与预算治理.md`，结构对齐章节模板，讲解深度对齐第五章。
+169. 第七章教程已补齐 `__init__.py` 创建步骤、完整源码、Hook 接线说明、预算治理主流程图、成功/失败链路和测试讲解。
+170. `README.md` 课程索引已将第 07 章状态更新为已完成并补齐链接。
+171. 已新增第七章可运行示例：`examples/context_engineering/context_engineering_demo.py`，用于展示 Hook 改写后的最终请求、tools 保留情况与预算报告。
+172. 已新增示例回归测试：`tests/unit/test_context_engineering_demo.py`，并将 examples 目录保持为“非包”用法，测试改为按文件路径加载脚本。
+173. 第七章教程已追加 examples 主线步骤、完整示例代码、示例测试代码与退化路径讲解。
+174. 最新全量回归：`uv run --no-sync pytest -q` 通过（67 passed）。
+175. 已按用户要求对第七章教程再次精修：重点加厚 `policies.py`、`runtime.py`、`hooks.py` 三段主流程讲解，补齐主流程时间线、Mermaid 图、成功链路、失败链路、工程取舍与边界说明。
+176. 第七章本轮精修已修复新增讲解段落的编码污染，中文问号污染计数清零（`???=0`，`??=0`）。
+177. 第七章本轮精修已通过代码零删减校验：`code_block_guard verify` PASS（before=40, now=43），确认未删除任何原有代码块，仅追加讲解与图示。
