@@ -171,3 +171,13 @@
 118. [x] 第五章已补齐 tests 包初始化文件教学步骤，避免 test 包导入报错。
 119. [x] 已完成 failed-tool replay 空记录兼容修复（hooks error-event fallback）并新增单测覆盖。
 120. [x] 第六章已同步 loop.py 变更说明与 test_observability 失败排查说明。
+121. [x] 已落地 Context Engineering 组件代码（runtime/policy/hook/schema/estimator）并统一导出。
+122. [x] 已新增 context engineering 单测 6 条并通过（tests/unit/test_context_engineering.py）。
+123. [x] 已执行全量回归：uv run --no-sync pytest -q（61 passed）。
+124. [x] 已完成 Context Engineering 质检修复：request.tools 保留语义、citations 真实入模、mandatory message 极限预算截断边界已修正。
+125. [x] 已将 context engineering 单测扩充至 9 条并通过（tests/unit/test_context_engineering.py）。
+126. [x] 已执行修复后全量回归：uv run --no-sync pytest -q（64 passed）。
+127. [x] 已完成 Context Engineering 代码注释/docstring 中文化，并回归验证通过（64 passed）。
+128. [x] 已完成二轮质检修复：适配器层屏蔽内部 extra 字段透传（context_budget_report/citations/tools）。
+129. [x] 已新增 `test_adapter_should_not_forward_internal_context_extras` 回归用例并通过。
+130. [x] 已执行最新全量回归：uv run --no-sync pytest -q（65 passed）。

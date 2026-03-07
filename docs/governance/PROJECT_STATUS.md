@@ -253,3 +253,14 @@
 154. 第五章已补充 tests/__init__.py 与 tests/unit/__init__.py 主线步骤（创建命令+完整代码），确保 tests 包绝对导入路径稳定。
 155. 已修复用户反馈的 failed-tool replay 空记录问题：增强 ToolRuntimeObservabilityHook，在 error 事件阶段做兼容兜底录制，并补充回归测试。
 156. 第六章已同步说明 loop.py 变更（EngineLoop event_listener 注入点）与该失败用例排错路径。
+158. 已完成 ModelRuntime Hook 级接入：新增 ContextEngineeringHook，在 before_request 阶段注入上下文编排与预算裁剪，并写入 context_budget_report 供观测/调试。
+157. 已完成第七章 Context Engineering 代码主线落地：新增 domain/application/infrastructure 分层，包含 ContextBudget/ContextBundle/BudgetReport/CitationItem、保守裁剪策略与轻量 token 估算器。
+159. 已新增第七章单测 tests/unit/test_context_engineering.py（6 个用例）并验证通过；全量回归 uv run --no-sync pytest -q 通过（61 passed）。
+160. 已完成 Context Engineering 代码质检修复：ContextEngineeringHook 不再覆盖调用方已设置的 ModelRequest.tools，改为优先继承 request.tools，再回退 hook 默认工具。
+161. 已修复 citations 未进入模型上下文的问题：保留的 citations 会被物化为 developer 消息，并与预算估算采用同一渲染格式，避免“报告通过但实际超预算”。
+162. 已修复极限预算边界：mandatory message 改为截断而非直接丢弃，truncate_text 在超小预算下不再因追加截断标记导致反超预算。
+163. 已补充 Context Engineering 回归测试至 9 条，并完成全量回归：uv run --no-sync pytest -q 通过（64 passed）。
+164. 已按用户要求完成 Context Engineering 相关代码注释/docstring 中文化（application/domain/infrastructure 与对应单测），并复测通过（64 passed）。
+165. 已完成二轮质检修复：ModelRuntime 适配器过滤内部 extra 字段（context_budget_report/citations/tools），避免 Context Engineering 内部字段透传到厂商 API。
+166. 已修复 Context Engineering 策略层类型导入问题：`policies.py` 补回 `typing.Any`，消除静态检查错误。
+167. 已新增回归测试 `test_adapter_should_not_forward_internal_context_extras` 并通过；全量回归 `uv run --no-sync pytest -q` 通过（65 passed）。

@@ -190,6 +190,25 @@ def test_runtime_level_kwargs_should_override_request_kwargs() -> None:
     assert kwargs["reasoning_effort"] == "high"
 
 
+def test_adapter_should_not_forward_internal_context_extras() -> None:
+    """验证内部上下文字段不会透传到厂商 API 载荷。"""
+
+    client, completions = _build_fake_client('{"answer":"openai"}')
+    adapter = OpenAIAdapter(api_key="test-key", model="gpt-4o-mini", client=client)
+    runtime = ModelRuntime(adapter=adapter)
+    req = ModelRequest(
+        messages=[AgentMessage(role="user", content="hello")],
+        context_budget_report={"available_tokens": 100},
+        citations=[{"title": "Doc 1"}],
+    )
+
+    runtime.generate(req)
+    kwargs = completions.last_kwargs or {}
+
+    assert "context_budget_report" not in kwargs
+    assert "citations" not in kwargs
+
+
 def test_deepseek_adapter_should_use_provider_defaults() -> None:
     """验证 DeepSeekAdapter 默认模型和统计字段可用。"""
 

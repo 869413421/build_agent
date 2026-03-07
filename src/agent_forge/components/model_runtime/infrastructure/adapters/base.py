@@ -25,6 +25,15 @@ from agent_forge.support.logging import get_logger
 
 logger = get_logger(__name__)
 
+_INTERNAL_REQUEST_EXTRA_KEYS = {
+    # Internal context-engineering diagnostics should never be sent to providers.
+    "context_budget_report",
+    # Context-engineering input-only helpers.
+    "citations",
+    # Canonical tools should come from ModelRequest.tools field, not extra kwargs.
+    "tools",
+}
+
 
 class ProviderAdapter(ABC):
     """模型厂商统一适配层接口。"""
@@ -210,6 +219,8 @@ class OpenAICompatibleAdapter(ProviderAdapter):
         merged_kwargs.update(request.extra_kwargs())
         merged_kwargs.update(kwargs)
         merged_kwargs.pop("request_id", None)
+        for key in _INTERNAL_REQUEST_EXTRA_KEYS:
+            merged_kwargs.pop(key, None)
 
         response_format = merged_kwargs.pop("response_format", None)
         if request.response_schema:
