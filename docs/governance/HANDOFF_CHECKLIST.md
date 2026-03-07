@@ -197,3 +197,20 @@
 144. [x] 已完成第七章测试讲解二次加厚：新增“逐条读懂这些测试到底在证明什么”，覆盖预算充足、旧历史裁剪、tools 优先级、citations 入模、Hook 集成、request.tools 保留与极限预算边界。
 145. [x] 已完成第七章 example 测试讲解二次加厚：新增“这两条 example 测试分别锁什么”，明确 example 测试与单元测试的不同职责。
 146. [x] 第七章二次精修已再次通过代码块零删减校验：`code_block_guard verify` PASS（before=40, now=44），问号污染复检继续为 0。
+147. [x] 已完成第八章 Retrieval 代码落地：新增 `domain/application/infrastructure` 分层与统一导出入口。
+148. [x] 已完成 Retrieval 通用抽象：`Retriever / Reranker / EmbeddingProvider` 协议与 `RetrievalQuery / RetrievalResult / RetrievedDocument / RetrievedCitation` 标准类型已落地。
+149. [x] 已完成 Retrieval 基线实现：`InMemoryRetriever` 与 `NoopReranker` 可离线运行，不锁死向量库与重排技术。
+150. [x] 已完成真实向量库适配示例：`ChromaRetriever` 通过注入式 `EmbeddingProvider` 接入，且缺依赖时给出清晰报错。
+151. [x] 已新增 Retrieval 单测：`tests/unit/test_retrieval.py`、`tests/unit/test_retrieval_chroma.py`。
+152. [x] 已更新 `pyproject.toml` 可选依赖组：新增 `retrieval-chroma`，主依赖未被向量库绑定。
+153. [x] 已更新 `docs/architecture/interfaces.md`，补充 Retrieval 核心接口与版本追踪要求。
+154. [x] 已执行最新全量回归：`uv run --no-sync pytest -q`（77 passed）。
+155. [x] 已新增 Retrieval 示例：`examples/retrieval/retrieval_demo.py`，同时展示可离线基线路径与真实向量库路径。
+156. [x] 已新增 Retrieval 示例测试：`tests/unit/test_retrieval_demo.py`。
+157. [x] Chroma 示例路径在缺少可选依赖时已支持可解释降级，不会让示例脚本直接崩溃。
+158. [x] 已执行新增示例后的最新全量回归：`uv run --no-sync pytest -q`（79 passed）。
+159. [x] 已完成 Retrieval 质检修复：`ChromaRetriever` 会把 `RetrievalFilters` 下推为 `where` 条件，修复跨后端过滤语义不一致问题。
+160. [x] 已完成 Retrieval 质检修复：`ChromaRetriever` 对 metadata 做标量类型收口，遇到不兼容类型会明确报错。
+161. [x] 已增强 Retrieval 示例韧性：Chroma 路径写入/查询异常也会返回可解释降级结果。
+162. [x] 已新增对应回归测试，覆盖 `where` 条件下推、metadata 类型校验与 Chroma 运行期失败降级。
+163. [x] 已执行质检修复后的最新全量回归：`uv run --no-sync pytest -q`（82 passed）。
