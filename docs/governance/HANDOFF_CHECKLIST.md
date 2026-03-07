@@ -214,3 +214,12 @@
 161. [x] 已增强 Retrieval 示例韧性：Chroma 路径写入/查询异常也会返回可解释降级结果。
 162. [x] 已新增对应回归测试，覆盖 `where` 条件下推、metadata 类型校验与 Chroma 运行期失败降级。
 163. [x] 已执行质检修复后的最新全量回归：`uv run --no-sync pytest -q`（82 passed）。
+164. [x] 已完成第八章 Retrieval 教程正文，文件为 `docs/tutorials/08-从0到1工业级Agent框架打造-第八章-Retrieval-检索召回与引用标准化.md`。
+165. [x] 第八章教程已补齐主流程讲解、双轨后端设计、真实向量库示例、examples 与三组测试代码。
+166. [x] 第八章教程已遵守 `examples` 非包目录约束，未引导创建 `examples/__init__.py`。
+167. [x] 已同步更新 `README.md` 与 `docs/governance/PROJECT_STATUS.md`，将第 08 章标记为已完成。
+168. [x] 已为第八章教程补齐 `验证清单`、`常见问题`、`本章 DoD`、`下一章预告`。
+169. [x] 已修复第八章教程尾部中文编码污染，并将文件路径改为可点击相对链接。
+170. [x] 已复跑教程质量检查；当前残留告警仅来自旧版 checker 未适配 ` ```codex ` 命令块规范。
+171. [x] 已为第八章教程新增“名词速览”，统一解释 `Retriever / Reranker / EmbeddingProvider / RetrievalHit / Citation Bridge / top_k / min_score / upsert / where`。
+172. [x] 已在领域模型、runtime、bridge、InMemoryRetriever、ChromaRetriever、测试讲解六处追加“名词对位讲解”，降低读者第一次读源码时的术语门槛。

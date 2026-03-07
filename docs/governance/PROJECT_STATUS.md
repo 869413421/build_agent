@@ -2,8 +2,8 @@
 
 ## 当前阶段
 
-- 阶段：Observability 组件落地完成（代码 + 测试 + 教程）
-- 日期：2026-03-05
+- 阶段：Retrieval 组件落地完成（代码 + 测试 + 教程）
+- 日期：2026-03-07
 
 ## 已完成组件
 
@@ -13,14 +13,14 @@
 - [x] Tool Runtime（API Adapter）
 - [x] Observability
 - [x] Context Engineering
-- [ ] Retrieval
+- [x] Retrieval
 - [ ] Memory
 - [ ] Evaluator
 - [ ] Safety Layer
 
 ## 进行中组件（唯一）
 
-- Retrieval
+- Memory
 
 ## 已通过审核的小步
 
@@ -75,7 +75,7 @@
 
 ## 下一步唯一任务
 
-- 若本步审核通过，进入第八章 Retrieval 组件实现与教程同步。
+- 若本步审核通过，进入第九章 Memory 组件实现与教程同步。
 
 ## 阻塞项
 
@@ -292,3 +292,12 @@
 193. 已增强 Retrieval 示例韧性：`examples/retrieval/retrieval_demo.py` 现在不仅处理 Chroma 缺依赖，还会对写入/查询阶段异常做可解释降级。
 194. 已新增对应回归测试，覆盖 `where` 条件下推、metadata 类型校验与 Chroma 运行期失败降级。
 195. 最新全量回归：`uv run --no-sync pytest -q` 通过（82 passed）。
+196. 已完成第八章教程正文：`docs/tutorials/08-从0到1工业级Agent框架打造-第八章-Retrieval-检索召回与引用标准化.md`，结构对齐章节模板，讲解深度对齐第五章标准。
+197. 第八章教程已把 Retrieval 主线、双轨后端、真实向量库适配示例、examples 与三组测试全部纳入主线，不再停留在抽象概念说明。
+198. 第八章教程已明确 `examples/` 为非包目录，未引导创建任何 `examples/__init__.py`，并保留 `ChromaRetriever` 可解释降级链路说明。
+199. `README.md` 已将第 08 章状态更新为已完成，并补齐教程链接。
+200. 已完成第八章教程收尾修复：补齐 `验证清单`、`常见问题`、`本章 DoD`、`下一章预告` 四个缺失章节，并修复此前一次终端编码导致的尾部中文污染。
+201. 已修正第八章教程中的文件路径展示方式：相关源码、示例与测试路径改为可点击 Markdown 链接，且链接目标改为相对 `docs/tutorials/` 的真实路径。
+202. 已复跑教程结构检查脚本：第八章当前仅剩“老版 checker 不识别 ` ```codex ` 命令块”这一类历史兼容告警，正文结构、章节完整性与链接漂移检查已收口。
+203. 已对第八章教程完成一轮名词解释加厚：新增“名词速览”与 6 处“名词对位讲解”，重点解释 `Retriever / Reranker / EmbeddingProvider / RetrievalHit / bridge / where / upsert / 行为不变量` 等高频术语。
+204. 本轮第八章教程精修未改动任何 Retrieval Python 实现，仅增强教学解释密度与术语可读性，便于读者先建立词汇地图再读源码。
