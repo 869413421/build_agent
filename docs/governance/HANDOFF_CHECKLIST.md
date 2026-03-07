@@ -223,3 +223,9 @@
 170. [x] 已复跑教程质量检查；当前残留告警仅来自旧版 checker 未适配 ` ```codex ` 命令块规范。
 171. [x] 已为第八章教程新增“名词速览”，统一解释 `Retriever / Reranker / EmbeddingProvider / RetrievalHit / Citation Bridge / top_k / min_score / upsert / where`。
 172. [x] 已在领域模型、runtime、bridge、InMemoryRetriever、ChromaRetriever、测试讲解六处追加“名词对位讲解”，降低读者第一次读源码时的术语门槛。
+173. [x] 已开始历史章节质量回收，优先处理第 5 章 Tool Runtime。
+174. [x] 第 5 章本轮已补齐 `运行命令 / 增量闭环验证 / 验证清单 / 常见问题 / 本章 DoD`，并追加术语地图、角色分工图与测试护栏讲解。
+175. [x] 第 5 章本轮已通过 `code_block_guard verify`，确认未删减原有代码块；当前 residual 告警主要为旧版 checker 未适配 ` ```codex ` 创建命令格式。
+
+176. ???? 5 ? Markdown ???????????????????????????? checker ??? ````codex` ????
+177. ????? tutorial-quality-checker??? ````codex` ??????????????? 5 ??? tutorial-quality-checker PASS?code_block_guard PASS?

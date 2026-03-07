@@ -28,6 +28,8 @@ REQUIRED_HEADING_KEYWORDS = [
     "下一章预告",
 ]
 
+CREATION_BLOCK_LANGS = {"bash", "powershell", "codex"}
+
 
 def find_missing_headings(text: str) -> list[str]:
     return [h for h in REQUIRED_HEADING_KEYWORDS if h not in text]
@@ -38,7 +40,7 @@ def find_empty_code_blocks(lines: list[str]) -> list[str]:
     for i in range(len(lines) - 1):
         line = lines[i].strip().lower()
         nxt = lines[i + 1].strip()
-        if line in ("```bash", "```powershell") and nxt == "```":
+        if line in tuple(f"```{lang}" for lang in CREATION_BLOCK_LANGS) and nxt == "```":
             issues.append(f"空代码块: 行 {i+1} ({line})")
     return issues
 
@@ -50,11 +52,12 @@ def find_file_block_issues(lines: list[str]) -> list[str]:
         # Scan a small window before each 文件： marker.
         start = max(0, idx - 18)
         window = "\n".join(lines[start:idx])
+        has_codex = "```codex" in window
         has_bash = "```bash" in window
         has_ps = "```powershell" in window
-        if not has_bash or not has_ps:
+        if not has_codex and (not has_bash or not has_ps):
             issues.append(
-                f"文件块缺创建命令: 行 {idx+1} (bash={has_bash}, powershell={has_ps})"
+                f"文件块缺创建命令: 行 {idx+1} (codex={has_codex}, bash={has_bash}, powershell={has_ps})"
             )
     return issues
 
@@ -112,6 +115,12 @@ def find_code_drift_issues(md_path: Path, lines: list[str]) -> list[str]:
         lang = fence[3:].strip().lower()
         if lang not in {"python", "toml", "json", "yaml", "yml"}:
             # Skip non-source snippets.
+            i = j + 1
+            continue
+
+        # Allow explicit excerpts to avoid false positives on intentionally partial code.
+        excerpt_window = "\n".join(lines[i : min(len(lines), j + 2)])
+        if "节选" in excerpt_window:
             i = j + 1
             continue
 
