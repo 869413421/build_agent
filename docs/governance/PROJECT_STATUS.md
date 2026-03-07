@@ -274,3 +274,6 @@
 175. 已按用户要求对第七章教程再次精修：重点加厚 `policies.py`、`runtime.py`、`hooks.py` 三段主流程讲解，补齐主流程时间线、Mermaid 图、成功链路、失败链路、工程取舍与边界说明。
 176. 第七章本轮精修已修复新增讲解段落的编码污染，中文问号污染计数清零（`???=0`，`??=0`）。
 177. 第七章本轮精修已通过代码零删减校验：`code_block_guard verify` PASS（before=40, now=43），确认未删除任何原有代码块，仅追加讲解与图示。
+178. 已继续加厚第七章测试讲解：为 `tests/unit/test_context_engineering.py` 追加逐条断言解释，明确每条测试分别在锁什么行为不变量、为什么这些断言足够证明实现正确。
+179. 已继续加厚第七章 example 测试讲解：为 `tests/unit/test_context_engineering_demo.py` 追加“示例测试锁什么”分析，明确单元测试与示例测试的职责边界。
+180. 第七章本轮二次精修已再次通过代码零删减校验：`code_block_guard verify` PASS（before=40, now=44），且中文问号污染复检继续为 0。

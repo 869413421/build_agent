@@ -194,3 +194,6 @@
 141. [x] 已完成第七章教程精修一轮：重点加厚 `policies.py`、`runtime.py`、`hooks.py` 三段讲解，补齐主流程时间线、Mermaid 图、成功/失败链路、工程取舍与边界说明。
 142. [x] 已修复第七章本轮新增讲解段落的中文编码污染，问号计数已清零（`???=0`，`??=0`）。
 143. [x] 第七章本轮精修已通过代码块零删减校验：`code_block_guard verify` PASS（before=40, now=43）。
+144. [x] 已完成第七章测试讲解二次加厚：新增“逐条读懂这些测试到底在证明什么”，覆盖预算充足、旧历史裁剪、tools 优先级、citations 入模、Hook 集成、request.tools 保留与极限预算边界。
+145. [x] 已完成第七章 example 测试讲解二次加厚：新增“这两条 example 测试分别锁什么”，明确 example 测试与单元测试的不同职责。
+146. [x] 第七章二次精修已再次通过代码块零删减校验：`code_block_guard verify` PASS（before=40, now=44），问号污染复检继续为 0。

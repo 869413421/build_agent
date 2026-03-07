@@ -1311,6 +1311,100 @@ def test_context_engineering_should_not_drop_mandatory_messages_under_tight_budg
 7. `preserve request tools` 防止一挂 Hook 就把调用方原本传入的工具覆盖掉。
 8. `truncate latest user` 和 `not drop mandatory messages` 把极限预算下的行为边界钉死。
 
+#### 逐条读懂这些测试到底在证明什么
+
+第一次看这组测试时，很多人会觉得“我知道断言写了什么，但不知道它为什么足够证明实现正确”。这里我们把每一类测试拆开讲。
+
+#### 1. 预算充足时不乱裁
+
+`test_context_engineering_should_keep_all_content_when_budget_is_sufficient()` 的输入很简单：短消息、一个工具、一条 citation、宽松预算。它断言了四件事：
+
+1. `messages/tools/citations` 都还在。
+2. `dropped_messages == 0`。
+3. `dropped_sections == []`。
+4. 最终消息里确实出现了“回答时请使用以下引用：”。
+
+这四个断言合起来证明的不是“函数跑完了”，而是“预算足够时系统不会过度保守，误删本来应该保留的内容”。这是所有裁剪策略最容易忽略的一类回归，因为很多实现只关注“超预算怎么删”，却忘了“预算够时不该乱动”。
+
+#### 2. 为什么旧历史会先被删
+
+`test_context_engineering_should_trim_old_history_when_budget_is_small()` 故意构造了两条很长的旧消息，再拼上一条最新用户消息。这里真正关键的断言不是 `dropped_messages >= 1`，而是这两个：
+
+1. `latest-user-` 还在。
+2. `old-user-` 不在了。
+
+也就是说，这条测试不是泛泛证明“发生了裁剪”，而是明确证明“裁剪顺序符合我们的优先级设计”。如果未来有人把策略改成随机删、平均删，或者先删最新消息，这条测试会第一时间红掉。
+
+#### 3. 为什么 tools 优先级必须单独测
+
+`test_context_engineering_should_prioritize_tools_over_optional_history()` 看起来像前一条测试的变种，但其实它锁的是另一条独立语义：工具定义不是普通历史消息。
+
+输入里只有两类可竞争内容：
+
+1. 一条很长的旧 assistant 历史。
+2. 一组 tools。
+
+最后断言 `len(bundle.tools) == 1` 且旧历史被清掉，证明了“预算不足时，系统宁可牺牲旧对话，也不牺牲执行能力”。这条测试对 Agent 尤其重要，因为工具一旦丢掉，模型可能从“能调用外部能力”瞬间退化成“只能空口回答”。
+
+#### 4. 为什么 citations 要分成两条测试
+
+本章对 citations 的要求其实有两层，所以我们用了两条测试分别锁住：
+
+1. `test_context_engineering_should_report_citation_drop_when_budget_exceeded()`：锁住“预算不够时要明确记录 citations 被丢弃”。
+2. `test_context_engineering_should_materialize_kept_citations_into_messages()`：锁住“预算够时 citations 必须真正进入消息，而不是只存在于字段里”。
+
+很多实现只做到了第一层，也就是 `bundle.citations` 里有数据，但模型实际根本看不到。第二条测试就是专门防这种“看起来保留了，实际上没入模”的假成功。
+
+#### 5. Hook 集成测试为什么重要
+
+`test_context_engineering_hook_should_integrate_with_model_runtime()` 不是在重复 runtime 单测，而是在验证“第七章代码到底有没有真正接进主链路”。它借助 `_CaptureAdapter` 把最终 request 抓出来，再断言：
+
+1. `captured.tools` 仍然存在。
+2. `captured.messages` 里出现 `developer` 消息。
+3. `captured.messages` 里出现 citation 内容。
+4. `context_budget_report` 已经挂回 request。
+
+这条测试的工程意义很大。因为如果只测 `ContextEngineeringRuntime.build_bundle()`，你最多只能证明“这个工具类自己没问题”；但用户真正会踩坑的地方往往是“类写对了，主链路没接进去”。
+
+```mermaid
+sequenceDiagram
+    participant Test as 测试用例
+    participant Runtime as ModelRuntime
+    participant Hook as ContextEngineeringHook
+    participant Adapter as CaptureAdapter
+    Test->>Runtime: generate(request, hooks=hook)
+    Runtime->>Hook: before_request(request)
+    Hook-->>Runtime: updated request
+    Runtime->>Adapter: generate(updated request)
+    Adapter-->>Test: captured_request
+```
+
+#### 6. request.tools 保留测试为什么不能省
+
+`test_context_engineering_hook_should_preserve_request_tools()` 是一条典型的“防语义回归测试”。它看起来断言很少，只有一句：
+
+1. 最终工具名还是 `request_tool`。
+
+但它锁住的是一个很容易在线上出事的问题：挂上 Hook 后，调用方自己传的工具会不会被默认工具覆盖。这个问题如果只靠肉眼读代码，很容易漏；用单测锁住以后，谁再改 `_resolve_tools()` 顺序，都会立刻付出代价。
+
+#### 7. 极小预算边界为什么要专门立测试
+
+最后两条测试是这章最像“生产事故保险丝”的部分：
+
+1. `test_context_engineering_should_truncate_latest_user_for_tiny_budget()` 锁住 latest user 在极小预算下也要尽量保留，不允许整条消失。
+2. `test_context_engineering_should_not_drop_mandatory_messages_under_tight_budget()` 锁住 mandatory message 即使要截断，也不能直接掉出最终消息列表。
+
+这两条测试的价值，不是证明“截断函数写对了”，而是证明“系统在最难看的预算条件下，仍然坚持核心语义”。很多框架平时看起来都正常，真正线上出问题往往就是在这种超紧预算边界。
+
+#### 读这组测试时的正确姿势
+
+建议你不是按文件从上往下机械地看，而是按下面顺序读：
+
+1. 先看 `budget is sufficient`，建立“预算够时不乱动”的基线。
+2. 再看 `trim old history` 和 `prioritize tools`，理解优先级顺序。
+3. 然后看两条 citations 测试，理解“记录保留”和“真正入模”不是一回事。
+4. 最后看 Hook 和极限预算测试，理解第七章为什么已经是主链路能力，而不是一个孤立工具类。
+
 ---
 
 ## 第 10 步：用一个完整例子把整条链路串起来
@@ -1660,6 +1754,40 @@ def test_context_engineering_demo_should_drop_old_history_under_budget() -> None
 1. 示例脚本如果没有测试，后面很容易在“只是改一下演示输出”时把核心逻辑悄悄改坏。
 2. 第一条测试验证这份 example 真正展示了 Hook 改写后的请求，而且预算报告里明确记录了 `citations_dropped`，说明这不是“引用凭空消失”，而是一次可解释的预算退化。
 3. 第二条测试验证这份 example 真的体现了第七章的主旨：预算紧张时，旧历史应该让位给关键上下文。
+
+#### 这两条 example 测试分别锁什么
+
+很多人会低估 example 测试，觉得“示例能跑就行”。但教程里的 example 一旦失真，读者学到的就是错的，所以这里必须把 example 也当正式交付物来保护。
+
+#### 第一条：这个示例展示的是不是第七章真正想教的东西
+
+`test_context_engineering_demo_should_show_trimmed_request()` 核心锁了五件事：
+
+1. 返回内容来自 demo adapter，而不是某个偶然的真实厂商响应。
+2. `final_tools` 里还保留 `search_policy`。
+3. `final_messages` 里确实有 `developer` 消息。
+4. `budget_report.available_tokens > 0`，说明预算对象真的参与了运行。
+5. `citations_dropped` 出现在报告里，说明示例确实展示了“可解释退化”。
+
+也就是说，这条测试保护的是“这个示例到底是不是本章主线的一个真实缩影”。如果以后有人把 example 改成一个预算宽松、什么都不裁的脚本，这条测试就该红。
+
+#### 第二条：这个示例有没有把最关键的裁剪现象表现出来
+
+`test_context_engineering_demo_should_drop_old_history_under_budget()` 只盯两件事：
+
+1. `old-question-` 不在最终消息里。
+2. `latest-user-` 还在最终消息里。
+
+这和正文前面的单测思路是一致的，但这里它保护的是“教程里的演示输出仍然符合第七章叙事”。因为对第一次学这章的人来说，看到旧历史被删、最新用户消息留下，比读十段抽象解释更直观。
+
+#### 为什么 example 测试和单元测试不能互相替代
+
+它们关注的东西不同：
+
+1. 单元测试关注“组件语义有没有被改坏”。
+2. example 测试关注“教程里的演示入口有没有偏离主线”。
+
+前者更像保险丝，后者更像教学护栏。两者一起存在，这章教程才不会慢慢退化成“代码是对的，但示例已经不说明问题”。
 
 ---
 
