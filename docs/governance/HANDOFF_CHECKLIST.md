@@ -250,3 +250,7 @@
 - 2026-03-08???????????? Engine ??????`tutorial-quality-checker` PASS?????????????????`code_block_guard inventory --out .tmp/ch03-code-inventory-v2.json` ? `verify` PASS?before=23, now=23??
 - 2026-03-08?????????????? `helpers.py`/`loop.py` ???????/???????????????? PASS?????? PASS?before=23, now=23??
 - [2026-03-08] 第三章完成“降认知负担精修”：补了三句话主线、生活化例子、`loop.py` 两遍阅读法、测试主线入口；文档检查通过，代码块零删减校验通过。
+- [2026-03-08] 已做 Engine 重构影响面扫描：当前直接波及第三章、接口文档，以及需要二次复核的第六章 Observability；第四、第五、第七、第八章暂无直接代码块漂移证据。
+- [2026-03-08] 已修 `docs/architecture/interfaces.md` 的 Engine 契约漂移：文档现对齐 `EngineLoop.run/arun + ExecutionPlan` 模型，不再保留旧 `Engine.loop(state, limits)` 表述。
+- [2026-03-08] 第六章已同步 Engine 重构影响：补上“pipeline engine 内核但 event_listener 接线保持兼容”的说明，并强调 Observability 现在能自然接收更丰富的计划与重规划事件上下文；文档结构检查通过。
+- [2026-03-08] 已完成全仓 Engine 旧叙事残留扫描：当前未再发现旧 `Engine.loop(state, limits)` 契约残留；第三章与第六章中的“while 循环 / 单体 loop”字样保留为演进对比说明，不属于代码漂移。

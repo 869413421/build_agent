@@ -88,6 +88,9 @@ sequenceDiagram
 1. `engine_event_listener` 不是 Engine 的方法，它是 `ObservabilityRuntime` 提供的回调函数。
 2. Engine 真正暴露的是构造参数 `event_listener`，注入方式是 `EngineLoop(..., event_listener=observability.engine_event_listener)`。
 3. 对应代码变更点在 [loop.py](../../src/agent_forge/components/engine/application/loop.py)：`EngineLoop.__init__` 新增 `event_listener` 参数，并在事件写入时调用该回调。
+4. 现在的 Engine 已经从早期单体 loop 升级为 `pipeline engine`，但 Observability 的接入点没有变，仍然是同一个 `event_listener` 回调插槽。
+5. 这也意味着第六章不需要知道 Engine 内部每个阶段怎么拆，只需要抓住一个事实：Engine 会持续产出标准 `ExecutionEvent`，Observability 负责消费这些事件。
+6. 和旧版本相比，当前 Observability 还能自然看到更丰富的 `plan / replan / finish` 事件上下文，例如 `plan_revision`、`global_task`、计划审计字段。
 
 ### 第 2 步：创建规则（重要）
 
@@ -1409,6 +1412,7 @@ def test_observability_should_not_mix_context_across_concurrent_tasks() -> None:
 
 1. 覆盖 6 个风险面：Engine 接入、hook 接入、脱敏、采样、失败回放、并发隔离。
 2. 重点看失败用例：确保错误结果也能进入 replay。
+3. 这一组测试还有一个隐含价值：它证明 Engine 虽然已经升级为 pipeline 内核，但 `event_listener` 这个观测接入点没有因为内部重构而失效。
 
 #### 深度讲解升级：测试矩阵为什么是这 6 类
 
@@ -1418,6 +1422,7 @@ def test_observability_should_not_mix_context_across_concurrent_tasks() -> None:
 4. 采样：验证 0 采样时错误事件仍保留。
 5. 失败回放：验证失败结果也能进入 replay。
 6. 并发隔离：验证 `trace_id/run_id` 不串线。
+7. 兼容性含义：只要这组测试继续通过，就说明 Engine 内部从单体 loop 演进到 pipeline，并没有把第六章的观测接线打断。
 
 测试取舍说明：
 1. 这组用例优先覆盖最容易线上出故障的路径，不追求“只看覆盖率数字”。
@@ -1569,6 +1574,7 @@ if __name__ == "__main__":
 1. 这份示例把“ToolRuntime 路径 + Engine 路径”一次性跑通，便于你看到两条观测链路都能落到同一个 runtime。
 2. 失败链路也有明确演示：`missing_tool` 会产出 `error` 结果并进入 replay，而不是静默丢失。
 3. 关键注入点是 `EngineLoop(..., event_listener=observability.engine_event_listener)`，这说明 Engine 提供的是回调插槽，Observability 提供的是回调实现。
+4. 如果你已经看过新版第三章，这里可以把它理解成：Observability 不关心 Engine 是单体 loop 还是 pipeline，它只关心标准事件有没有稳定吐出来。
 
 ## 运行命令
 
@@ -1608,6 +1614,10 @@ uv run python examples/observability/observability_demo.py
 1. 先确认 [hooks.py](../../src/agent_forge/components/observability/application/hooks.py) 中 `on_event(event_type=\"error\")` 有兜底录制逻辑。
 2. 再确认 [executor.py](../../src/agent_forge/components/tool_runtime/application/executor.py) 错误路径会走 `_finalize_error -> hooks.after_execute` 收口。
 3. 如果你是按教程手工搭建，优先重新对齐这两个文件，再执行 `uv run --no-sync pytest tests/unit/test_observability.py -q`。
+5. 看到第三章已经改成 pipeline engine，会不会影响第六章：
+1. 不会影响接线方式。第六章关心的接线点仍然是 `EngineLoop(..., event_listener=...)`。
+2. 会影响你对事件来源的理解。现在 Engine 内部阶段更多，但 Observability 看到的仍然是统一 `ExecutionEvent`。
+3. 如果你要排查事件缺失，优先检查 `loop.py` 里的事件写入点，而不是先怀疑 `engine_event_listener` 本身。
 
 ## 本章 DoD
 

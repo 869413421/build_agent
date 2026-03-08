@@ -330,3 +330,8 @@
 - 2026-03-08???????????????? `helpers.py` ? `loop.py` ??????????/????????? `test_engine.py` ?????????????tutorial-quality-checker PASS??????? code_block_guard verify PASS?before=23, now=23??
 - 2026-03-08 第三章已完成一轮“降认知负担精修”：新增“如果你现在只想先看懂 3 句话”、生活化例子、`loop.py` 分层阅读指引、以及“先看这 5 条测试”的主线入口，目标是让第一次接触执行内核的读者先抓骨架再读细节。
 - 2026-03-08 本轮第三章精修未改任何 Python 实现，仅增强教程可读性；`tutorial-quality-checker` 已通过，`code_block_guard verify --before .tmp/ch03-code-inventory-v2.json` 已通过（before=23, now=23）。
+- 2026-03-08 已补 Engine 重构后的跨章节影响面扫描：当前确定需要同步关注的主要是第三章教程、第六章 Observability 教程、以及 `docs/architecture/interfaces.md` 这类接口约束文档；第四、第五、第七、第八章未直接引用旧 Engine 内部结构。
+- 2026-03-08 `docs/architecture/interfaces.md` 已从旧 `Engine.loop(state, limits)` 升级为当前 `EngineLoop.run/arun(state, plan_fn, act_fn, reflect_fn=None, context=None)` 契约，并补入 `ExecutionPlan / PlanStep / PlanAudit / ReflectDecision` 与 Engine 特别约束，避免接口文档继续漂移。
+- 2026-03-08 第六章 Observability 已完成 Engine 重构后的同步收口：补充说明 Engine 虽已升级为 `pipeline engine`，但观测接入点仍是 `EngineLoop(..., event_listener=observability.engine_event_listener)`；同时明确当前可看到更丰富的 `plan / replan / finish` 事件上下文。
+- 2026-03-08 第六章最新 `tutorial-quality-checker` 已通过；本轮未改 Observability Python 实现，仅同步教程叙事与排障说明，第四、第五、第七、第八章当前仍未发现需要因 Engine 重构而强制联动的直接漂移点。
+- 2026-03-08 已完成一轮全仓 Engine 旧叙事残留扫描：除第三章、第六章中用于“新旧演进对比”的说明性表述外，未再发现旧接口 `Engine.loop(state, limits)` 或其他需要因 Engine 重构而强制联动修正的直接残留点。
