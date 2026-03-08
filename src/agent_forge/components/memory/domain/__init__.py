@@ -1,26 +1,22 @@
-"""Memory 组件导出。"""
+"""Memory 组件领域层导出。"""
 
-from agent_forge.components.memory.application import MemoryExtractor, MemoryRuntime, to_context_messages
-from agent_forge.components.memory.domain import (
+from agent_forge.components.memory.domain.schemas import (
     ExtractedMemoryItem,
     MemoryCategory,
+    MemoryModelRuntime,
     MemoryReadQuery,
     MemoryReadResult,
     MemoryRecord,
     MemoryScope,
     MemorySource,
     MemorySourceType,
+    MemoryStructuredStore,
     MemoryTrigger,
     MemoryVectorDocument,
     MemoryVectorHit,
     MemoryVectorStore,
     MemoryWriteRequest,
     MemoryWriteResult,
-)
-from agent_forge.components.memory.infrastructure import (
-    ChromaMemoryVectorStore,
-    InMemoryLongTermMemoryStore,
-    InMemorySessionMemoryStore,
 )
 
 __all__ = [
@@ -37,11 +33,7 @@ __all__ = [
     "MemoryReadResult",
     "MemoryVectorDocument",
     "MemoryVectorHit",
+    "MemoryStructuredStore",
     "MemoryVectorStore",
-    "MemoryExtractor",
-    "MemoryRuntime",
-    "to_context_messages",
-    "InMemorySessionMemoryStore",
-    "InMemoryLongTermMemoryStore",
-    "ChromaMemoryVectorStore",
+    "MemoryModelRuntime",
 ]

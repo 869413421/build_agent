@@ -11,7 +11,9 @@
 5. `ToolRuntime.execute(tool_call, principal) -> ToolResult`
 6. `ContextEngineeringRuntime.build_bundle(...) -> ContextBundle`
 7. `RetrievalRuntime.search(query) -> RetrievalResult`
-8. `Evaluator.score(run_record) -> EvalReport`
+8. `MemoryRuntime.write(request) -> MemoryWriteResult`
+9. `MemoryRuntime.read(query) -> MemoryReadResult`
+10. `Evaluator.score(run_record) -> EvalReport`
 
 ## 核心类型
 
@@ -42,6 +44,11 @@
 25. `Retriever`
 26. `Reranker`
 27. `EmbeddingProvider`
+28. `MemoryWriteRequest`
+29. `MemoryWriteResult`
+30. `MemoryReadQuery`
+31. `MemoryReadResult`
+32. `MemoryRecord`
 
 ## 必含字段约束
 
@@ -55,6 +62,8 @@
 8. 执行计划必须至少暴露 `plan_id`、`revision`、`origin`、`global_task`、`steps`
 9. 步骤对象若声明了 `depends_on`、`priority`，执行调度必须真实生效，不能只作为展示字段
 10. 反思决策若返回 `replan`，必须携带可审计的计划修订信息，不能只替换内存中的剩余步骤列表
+11. Memory 读写必须显式带 `tenant_id/user_id/session_id` 等隔离键，不能从运行态隐式兜底
+12. Memory 语义查询若落到向量库，必须能回填为结构化 `MemoryRecord`
 
 ## Engine 特别约束
 
