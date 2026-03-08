@@ -38,7 +38,7 @@
 | 08 | Retrieval | 已完成 | [第 08 章](docs/tutorials/08-从0到1工业级Agent框架打造-第八章-Retrieval-检索召回与引用标准化.md) |
 | 09 | Memory | 已完成 | [第 09 章](docs/tutorials/09-从0到1工业级Agent框架打造-第九章-Memory-双层记忆写入与语义召回.md) |
 | 10 | Evaluator | 已完成 | [第十章：Evaluator 结果评估与轨迹评分](docs/tutorials/10-从0到1工业级Agent框架打造-第十章-Evaluator-结果评估与轨迹评分.md) |
-| 11 | Safety Layer | 进行中 | 待发布 |
+| 11 | Safety Layer | 已完成 | [第十一章：Safety Layer 输入、工具、输出三段防线](docs/tutorials/11-从0到1工业级Agent框架打造-第十一章-SafetyLayer-输入工具输出三段防线.md) |
 | 12 | 生产发布与治理专题（预留） | 预留 | 待发布 |
 | 13 | 生产发布与治理专题（预留） | 预留 | 待发布 |
 | 14 | 生产发布与治理专题（预留） | 预留 | 待发布 |

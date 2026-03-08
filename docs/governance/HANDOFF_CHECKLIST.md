@@ -306,3 +306,7 @@
 - [2026-03-08] 本轮验证完成：UV_CACHE_DIR=D:\code\build_agent\.tmp\uv-cache uv run --no-sync pytest tests/unit/test_evaluator.py tests/unit/test_evaluator_judge.py tests/unit/test_evaluator_demo.py tests/unit/test_evaluator_compare_demo.py -q => 12 passed；uv run --no-sync pytest -q => 130 passed。
 - [2026-03-08] 已完成第十章 Evaluator 教程交付：`docs/tutorials/10-从0到1工业级Agent框架打造-第十章-Evaluator-结果评估与轨迹评分.md` 已写入并通过结构/代码块校验；README 第 10 章索引已同步更新。
 - [2026-03-08] 已完成第十章 Evaluator 教程精修：新增首读路线、A/B 对比场景、trajectory/replan 计数例子、judge 使用例子和测试阅读指引；`tutorial-quality-checker` 与 `code_block_guard` 均保持 PASS。
+- [2026-03-08] 已完成第十一章 Safety Layer 教程：`docs/tutorials/11-从0到1工业级Agent框架打造-第十一章-SafetyLayer-输入工具输出三段防线.md` 已补齐主流程、完整源码、接入节选、example、测试与失败模式。
+- [2026-03-08] README 第 11 章状态已从“进行中”改为“已完成”，并补齐教程链接。
+- [2026-03-08] `docs/governance/PROJECT_STATUS.md` 已同步更新：Evaluator 和 Safety Layer 均标记为完成，当前阶段改为 Safety Layer 完成态。
+- [2026-03-08] Safety 最新验证基线：Safety 定向回归 14 passed，全量回归 144 passed。
