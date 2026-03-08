@@ -13,7 +13,7 @@
 7. `RetrievalRuntime.search(query) -> RetrievalResult`
 8. `MemoryRuntime.write(request) -> MemoryWriteResult`
 9. `MemoryRuntime.read(query) -> MemoryReadResult`
-10. `Evaluator.score(run_record) -> EvalReport`
+10. `EvaluatorRuntime.evaluate(request) -> EvaluationResult`
 
 ## 核心类型
 
@@ -28,7 +28,7 @@
 9. `ModelResponse`
 10. `ExecutionEvent`
 11. `FrameworkResult`
-12. `EvalReport`
+12. `EvaluationRequest`
 13. `StateSnapshot`
 14. `ConfigVersion`
 15. `ErrorInfo`
@@ -49,6 +49,10 @@
 30. `MemoryReadQuery`
 31. `MemoryReadResult`
 32. `MemoryRecord`
+33. `EvaluationResult`
+34. `EvaluationScore`
+35. `EvaluationRubric`
+36. `TrajectorySummary`
 
 ## 必含字段约束
 
@@ -64,6 +68,9 @@
 10. 反思决策若返回 `replan`，必须携带可审计的计划修订信息，不能只替换内存中的剩余步骤列表
 11. Memory 读写必须显式带 `tenant_id/user_id/session_id` 等隔离键，不能从运行态隐式兜底
 12. Memory 语义查询若落到向量库，必须能回填为结构化 `MemoryRecord`
+13. Evaluator 评估输出必须结构化，至少暴露 `verdict / total_score / scores / summary`
+14. LLM Judge 若接入模型能力，必须统一走 `ModelRuntime`，不能在 Evaluator 内直接耦合具体模型 SDK
+15. 轨迹评估必须能消费 `ExecutionEvent` 序列，不能只看最终答案
 
 ## Engine 特别约束
 
@@ -72,6 +79,13 @@
 3. `replan` 属于正式计划修订动作，必须体现在 `ExecutionPlan.revision` 与事件审计字段里
 4. 恢复跳过必须基于稳定步骤键，而不是步骤索引
 5. `update` 是步骤提交点；只有走到这里，这一步才算真正完成
+
+## Evaluator 特别约束
+
+1. `EvaluatorRuntime` 首版保持独立 runtime，不直接侵入 `EngineLoop` 主链路
+2. Evaluator 首版必须同时支持 `output / trajectory / combined` 三种模式
+3. 规则评估与 LLM judge 评估都必须能产出统一 `EvaluationResult`
+4. `compare(...)` 的输入必须是结构化评估结果，不能直接比较原始运行记录
 
 ## 变更规则
 

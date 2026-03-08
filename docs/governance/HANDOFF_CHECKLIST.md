@@ -294,3 +294,13 @@
 - [2026-03-08] ????????????????? Memory ?????? `tutorial-quality-checker` PASS?`code_block_guard` ?? `.tmp/ch09-code-inventory-v4.json` verify PASS??????? `?` ??? 0?
 - [2026-03-08] ???????????????????????? `tutorial-quality-checker` PASS ? `code_block_guard` ?? `.tmp/ch09-code-inventory-v4.json` verify PASS?
 - [2026-03-08] ??????????????? FAQ ????????? `tutorial-quality-checker` PASS ? `code_block_guard` ?? `.tmp/ch09-code-inventory-v4.json` verify PASS?
+
+- [2026-03-08] 已完成第十章 Evaluator 首版代码交付：src/agent_forge/components/evaluator/ 从 placeholder 升级为正式组件，含 domain/application/infrastructure 三层、examples/evaluator/ 两个示例，以及 tests/unit/test_evaluator*.py 全套回归。
+- [2026-03-08] 已同步更新 docs/architecture/interfaces.md，移除旧的 Evaluator.score(run_record) -> EvalReport 占位表述，改为当前真实契约 EvaluatorRuntime.evaluate(request) -> EvaluationResult。
+- [2026-03-08] 已完成代码级验证：py_compile 通过；Evaluator 定向测试 9 passed；全量 pytest 127 passed。当前唯一残留为 .pytest_cache 路径已存在导致的非阻塞 PytestCacheWarning。
+
+- [2026-03-08] Evaluator 质检问题已修复：1) rubric.dimensions / weights 现真实参与评分与聚合；2) compare(...) 现比较 run 而不是只比较 evaluator 名称；3) judge prompt 现使用 JSON 序列化输入，减少真实模型侧抖动。
+- [2026-03-08] 本轮验证完成：UV_CACHE_DIR=D:\code\build_agent\.tmp\uv-cache uv run --no-sync pytest tests/unit/test_evaluator.py tests/unit/test_evaluator_judge.py tests/unit/test_evaluator_demo.py tests/unit/test_evaluator_compare_demo.py -q => 10 passed；uv run --no-sync pytest -q => 128 passed。
+
+- [2026-03-08] Evaluator 复检问题已修复：1) summarize_events 对 replan 按唯一 plan_revision 去重；2) compare(...) 为每个候选生成稳定 candidate_id；3) RuleBasedEvaluator 侧 final_answer.output 改为 JSON 文本，减少与 judge 通道的输入分叉。
+- [2026-03-08] 本轮验证完成：UV_CACHE_DIR=D:\code\build_agent\.tmp\uv-cache uv run --no-sync pytest tests/unit/test_evaluator.py tests/unit/test_evaluator_judge.py tests/unit/test_evaluator_demo.py tests/unit/test_evaluator_compare_demo.py -q => 12 passed；uv run --no-sync pytest -q => 130 passed。
