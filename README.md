@@ -37,7 +37,7 @@
 | 07 | Context Engineering | 已完成 | [第 07 章](docs/tutorials/07-从0到1工业级Agent框架打造-第七章-ContextEngineering-上下文编排与预算治理.md) |
 | 08 | Retrieval | 已完成 | [第 08 章](docs/tutorials/08-从0到1工业级Agent框架打造-第八章-Retrieval-检索召回与引用标准化.md) |
 | 09 | Memory | ??? | [????](docs/tutorials/09-?0?1???Agent????-???-Memory-???????????.md) |
-| 10 | Evaluator | 规划中 | 待发布 |
+| 10 | Evaluator | 已完成 | [第十章：Evaluator 结果评估与轨迹评分](docs/tutorials/10-从0到1工业级Agent框架打造-第十章-Evaluator-结果评估与轨迹评分.md) |
 | 11 | Safety Layer | 规划中 | 待发布 |
 | 12 | 生产发布与治理专题（预留） | 预留 | 待发布 |
 | 13 | 生产发布与治理专题（预留） | 预留 | 待发布 |

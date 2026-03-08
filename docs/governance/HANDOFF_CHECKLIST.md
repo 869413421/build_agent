@@ -304,3 +304,5 @@
 
 - [2026-03-08] Evaluator 复检问题已修复：1) summarize_events 对 replan 按唯一 plan_revision 去重；2) compare(...) 为每个候选生成稳定 candidate_id；3) RuleBasedEvaluator 侧 final_answer.output 改为 JSON 文本，减少与 judge 通道的输入分叉。
 - [2026-03-08] 本轮验证完成：UV_CACHE_DIR=D:\code\build_agent\.tmp\uv-cache uv run --no-sync pytest tests/unit/test_evaluator.py tests/unit/test_evaluator_judge.py tests/unit/test_evaluator_demo.py tests/unit/test_evaluator_compare_demo.py -q => 12 passed；uv run --no-sync pytest -q => 130 passed。
+- [2026-03-08] 已完成第十章 Evaluator 教程交付：`docs/tutorials/10-从0到1工业级Agent框架打造-第十章-Evaluator-结果评估与轨迹评分.md` 已写入并通过结构/代码块校验；README 第 10 章索引已同步更新。
+- [2026-03-08] 已完成第十章 Evaluator 教程精修：新增首读路线、A/B 对比场景、trajectory/replan 计数例子、judge 使用例子和测试阅读指引；`tutorial-quality-checker` 与 `code_block_guard` 均保持 PASS。
