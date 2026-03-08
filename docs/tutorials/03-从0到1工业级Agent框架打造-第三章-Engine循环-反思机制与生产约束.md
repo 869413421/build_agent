@@ -1,262 +1,293 @@
-﻿# 《从0到1工业级Agent框架打造》第三章：Engine 循环（反思机制与生产约束）
+# 《从0到1工业级Agent框架打造》第三章：Engine 循环（反思机制与生产约束）
 
-本章目标：将 Engine 重构为 `asyncio + 协程` 形态，打通可恢复、可限流、可追踪、可测试的生产导向执行闭环。
+这一章重新定义 Engine 的目标：不是写一个能跑的 while 循环，而是先落一个真正能承受后续组件接入的执行内核。当前版本的 Engine 已经不是早期那种“plan 一下，然后按顺序调用 act”的最小闭环，而是升级成了带 `pipeline`、正式 `ExecutionPlan`、`replan`、预算控制、事件审计、恢复语义的生产导向内核。
 
 ---
 
 ## 目标
 
-1. 实现异步执行链路：`plan -> act -> observe -> reflect -> update -> finish`。
-2. 实现恢复一致性（stable step key）与预算控制（step/run 双层时间预算 + max_steps）。
-3. 实现并发背压与可注入执行器，避免 Engine 与业务执行器强耦合。
-4. 用完整测试验证成功、重试、恢复、超时、背压等关键失败模式。
+本章完成后，系统将新增以下能力：
+
+1. 把 Engine 从固定大循环升级为“阶段可插拔”的 `pipeline engine`。
+2. 把 `plan` 从低级步骤列表升级为正式 `ExecutionPlan`，支持 `global_task`、`success_criteria`、`constraints`、`risk_level`、`audit`。
+3. 打通 `plan -> act -> observe -> reflect -> update -> finish` 六段式主链路，并让 `replan` 成为正式计划修订能力。
+4. 用完整单元测试锁住成功链路、失败链路、恢复跳过、超时、背压、计划调度、计划修订与计划治理事件。
+
+**本章在整体架构中的定位：**
+
+1. 它属于核心执行层，是 Protocol 之上的第一层运行时骨架。
+2. 它解决的是“协议对象已经有了，但系统还没有真正执行闭环”的缺口。
+3. 必须在这个阶段引入，因为后面的 Model Runtime、Tool Runtime、Observability、Context Engineering、Retrieval 都要挂在 Engine 的执行链路上。
 
 ---
 
 ## 架构位置说明
 
-### 当前系统结构（第 3 章开始前）
+### 当前系统结构回顾
 
 ```mermaid
 flowchart TD
-  A[Protocol 契约层] --> B[待接入的执行闭环]
-  B --> C[Model/Tool Runtime 将在后续接入]
+  A[Protocol 协议层] --> B[待落地执行内核]
+  B --> C[后续运行时组件]
 ```
 
-### 本章完成后的结构
+### 本章新增后的结构
 
 ```mermaid
 flowchart TD
-  A[Protocol 契约层] --> B[Engine Loop]
-  B --> C[执行事件与最终答案]
-  C --> D[测试回归护栏]
+  A[Protocol 协议层] --> B[Engine Pipeline]
+  B --> C[执行事件]
+  B --> D[FinalAnswer]
+  C --> E[Observability]
+  B --> F[Model Runtime]
+  B --> G[Tool Runtime]
 ```
 
-1. 新模块依赖谁：Engine 依赖 Protocol 契约对象，不反向依赖上层应用。
-2. 谁依赖它：后续 Model Runtime、Tool Runtime、Observability 都基于 Engine 事件流扩展。
-3. 依赖方向是否变化：从“只定义对象”推进到“对象驱动执行闭环”。
-4. 循环风险：本章保持单向依赖，避免 Engine 反向引用运行时实现。
+这里要先把边界讲清楚：
+
+1. Engine 依赖谁：只依赖 Protocol 契约对象与 support/logging，不直接依赖 Tool Runtime 或 Model Runtime。
+2. 谁依赖 Engine：后续的 Model Runtime、Tool Runtime、Observability 都是 Engine 的下游扩展，不反向塑形 Engine。
+3. 依赖方向有没有变：有，系统从“只有对象定义”进入“对象驱动执行”的阶段，但依赖方向仍然保持单向。
+4. 有没有循环风险：没有。Engine 提供执行骨架和事件出口，后续组件通过函数注入、hook 或 listener 接入。
+
+这一章最重要的工程判断是：
+
+**Engine 不能被具体运行时实现反向绑死。**
+
+如果 Engine 直接知道“怎么调模型”“怎么调工具”“怎么写 trace”，后面的每一章都会变成在 Engine 里继续塞分支。那种设计能跑，但不叫生产级。
+
+---
 
 ## 前置条件
 
 1. 已完成第二章 Protocol 组件。
-2. 你可以正常运行：`uv run pytest tests/unit/test_protocol.py -q`。
-3. 当前命令执行目录：仓库根目录（包含 `src/`、`tests/`、`docs/`）。
+2. 当前仓库根目录下已经有 `src/`、`tests/`、`docs/`。
+3. 本机已安装 Python 3.11+ 与 `uv`。
+4. 你至少先跑通过：`tests/unit/test_protocol.py`。
 
-## 环境准备
+### 环境准备与缺包兜底
 
-```bash
+先在仓库根目录执行：
+
+```codex
 uv sync --dev
-uv run pytest tests/unit/test_protocol.py -q
+uv run --no-sync pytest tests/unit/test_protocol.py -q
 ```
 
+如果你之前没有同步开发依赖，先执行一次 `uv sync --dev`。如果你的环境里已经有依赖，但不想重新同步，可以直接用：
 
-```bash
-python -m pytest tests/unit/test_engine.py -q
+```codex
+uv run --no-sync pytest tests/unit/test_protocol.py -q
 ```
-
-## 本章怎么学（先不“啃源码”）
-
-如果你在这一章有“突然变难”的感觉，这是正常的。
-这一章难点不在语法，而在于一次引入了执行状态、重试策略、超时预算和并发背压四套机制。
-
-建议按下面顺序学习：
-
-1. 先看主流程图，只记 6 个动作：`plan -> act -> observe -> reflect -> update -> finish`。
-2. 先跑测试看结果，再回头看实现，避免一上来被长代码压住。
-3. 看源码时只盯 3 个函数：`arun()`、`_default_act_executor()`、`_build_final_answer()`。
-4. 最后再看失败路径测试（超时、重试、背压），理解系统如何“可控失败”。
 
 ---
 
-## 先把术语讲成人话（这一节最重要）
+## 名词速览：先把这一章最容易混的词看懂
 
-先别急着看代码，先把 6 个词翻译成日常语言：
+这一章如果直接读源码，最容易在这些词上卡住。先压缩成人话：
 
-1. `plan`：先列待办清单。
-例子：先查法规，再整理证据，再生成建议。
-2. `act`：按清单做一件动作。
-例子：调用一次搜索工具，真的去查。
-3. `observe`：看动作结果并记录。
-例子：查到 3 条结果，耗时 120ms。
-4. `reflect`：判断下一步怎么走。
-例子：结果不够就重试，结果够好就继续，风险高就终止。
-5. `update`：把“这一步完成”正式写入状态。
-例子：恢复执行时能跳过这一步，不会重复做。
-6. `finish`：收尾并给最终结果。
-例子：输出 `FinalAnswer` 和执行统计。
+1. `ExecutionPlan`：正式计划对象，不只是“步骤数组”，而是“这轮任务为什么做、要做到什么、受什么约束、现在是什么风险等级”的完整载体。
+2. `PlanStep`：计划中的单个执行节点。它不仅有 `name`，还带 `depends_on`、`priority`、超时和重试覆盖。
+3. `global_task`：全局任务目标。它解决的是“只剩步骤，没有目标”的问题。
+4. `success_criteria`：成功标准。它回答的是“这轮计划做成什么样，才叫真的完成”。
+5. `constraints`：执行约束。它回答的是“这轮计划不能做什么、必须遵守什么边界”。
+6. `risk_level`：当前计划的风险等级。后续会直接影响策略、观测和审计。
+7. `PlanAudit`：计划审计信息。它记录“谁生成了计划、是不是修订过、是哪一步触发了重规划”。
+8. `pipeline`：阶段管线。不是一个大 while 把所有逻辑写死，而是把主流程拆成可插拔阶段。
+9. `attempt pipeline`：单步尝试管线。处理的是同一个步骤的一次执行尝试，要走 `act -> observe -> reflect -> decide` 这条小链路。
+10. `replan`：正式的计划修订动作，不是随手改一下剩余列表。
+11. `resume_skip`：恢复时跳过已成功提交的步骤，靠的是稳定步骤键，而不是数组索引。
+12. `commit point`：提交点。在这一章里就是 `update` 事件，只有进入 `update`，这一步才算真正完成。
 
-一句话记忆：
-先想（plan）-> 去做（act）-> 看结果（observe）-> 做判断（reflect）-> 提交状态（update）-> 收尾（finish）。
+这一章的阅读顺序建议是：
 
-### 用一个生活化例子串起来
-
-你让 Agent 处理“公司拖欠工资”咨询：
-
-1. `plan`：先查法规，再整理证据清单，最后给行动建议。
-2. `act`：执行“查法规”这一步。
-3. `observe`：发现结果太少。
-4. `reflect`：判断“可重试”，再查一次。
-5. 第二次结果够用，进入 `update`，把该步骤标记完成。
-6. 全部步骤完成后 `finish`，输出结构化建议。
-
-把 Engine 当成“会自检的任务执行器”就好：不是一口气跑完，而是每一步都先看结果再决定下一步。
+1. 先看主流程图，先理解 Engine 的“面”。
+2. 再看 `ExecutionPlan` 和 `PlanStep`，理解计划对象为什么要做厚。
+3. 再看 `loop.py`，理解阶段管线怎么落到运行时。
+4. 最后看测试，确认这些设计不是自说自话。
 
 ---
 
-## 先讲“面”：Engine 主流程一眼看懂
-
-```mermaid
-flowchart TD
-    A[plan] --> B[act]
-    B --> C[observe]
-    C --> D[reflect]
-    D -->|continue| E[update]
-    D -->|retry| B
-    D -->|abort| F[error]
-    E --> G{还有步骤?}
-    G -->|是| B
-    G -->|否| H[finish]
-    F --> H
-```
-
-主流程解释：  
-1. `plan` 只负责产出“要做什么”，不做执行。  
-2. `act` 负责执行，`observe` 负责把结果结构化沉淀。  
-3. `reflect` 是决策闸门，决定继续、重试、终止。  
-4. `update` 才算“步骤提交成功”，这对恢复一致性非常关键。  
-5. 任一步骤失败都要落事件并进入 `finish`，不能静默吞掉。  
-
-成功/失败速查（评审时建议先看这张表）：
-
-1. 成功链路：`act` 返回可消费结果 -> `reflect` 给出 `continue` -> `update` 提交状态 -> `finish` 汇总输出。
-2. 失败链路：`act` 超时或异常 -> `reflect` 给出 `retry/abort` -> 记录标准错误事件 -> `finish` 给可解释失败结果。
-
-## 再讲“点”：本章重点解哪些工程难题
-
-1. 恢复一致性：为什么要 `stable step key`，而不是步骤索引。  
-2. 预算语义：为什么 `max_steps` 统计 executed 而不是 planned。  
-3. 超时控制：为什么 run 预算检查必须进入重试循环。  
-4. 扩展性：为什么执行器必须可注入。  
-5. 观测成本：为什么 trace 要摘要化而不是全量塞原文。  
-
-## 深入理解：Engine Loop 为什么必须把 reflect 做成硬机制
-
-### 白话理解 Engine Loop
-
-Engine loop 可以理解成“项目经理的固定工作节奏”：
-
-1. 先计划（plan）
-2. 再执行（act）
-3. 看结果（observe）
-4. 复盘（reflect）
-5. 更新状态（update）
-6. 决定结束（finish）
-
-### 例子：为什么 reflect 不能省
-
-成功链路例子：
-
-1. 第一次工具调用超时。
-2. reflect 识别为可重试错误。
-3. 第二次重试成功，任务继续推进。
-
-失败链路例子：
-
-1. 没有 reflect，第一次失败就直接终止。
-2. 用户看到“系统失败”，但本可自动恢复。
-
-### 时序图（帮助你记住每步职责）
-
-```mermaid
-sequenceDiagram
-  participant U as User
-  participant E as Engine
-  participant M as Model/Tool
-  U->>E: task
-  E->>E: plan
-  E->>M: act
-  M-->>E: observe
-  E->>E: reflect
-  E->>E: update
-  E-->>U: finish
-```
-
-### 调试建议
-
-1. 先看 stop_reason，不要先看最终文案。
-2. 再看 error 事件序列，定位是“门禁失败”还是“执行失败”。
-3. 最后看 reflected_retry_count，判断系统是否做了自愈尝试。
-
-## 本章主线改动范围（强制声明）
+## 本章主线改动范围
 
 ### 代码目录
 
 - `src/agent_forge/components/engine/`
+- `src/agent_forge/components/engine/domain/`
+- `src/agent_forge/components/engine/application/`
 
 ### 测试目录
 
-- `tests/unit/`
+- `tests/unit/test_engine.py`
 
 ### 本章涉及的真实文件
 
 - [src/agent_forge/components/engine/__init__.py](../../src/agent_forge/components/engine/__init__.py)
+- [src/agent_forge/components/engine/domain/__init__.py](../../src/agent_forge/components/engine/domain/__init__.py)
+- [src/agent_forge/components/engine/domain/schemas.py](../../src/agent_forge/components/engine/domain/schemas.py)
 - [src/agent_forge/components/engine/application/__init__.py](../../src/agent_forge/components/engine/application/__init__.py)
+- [src/agent_forge/components/engine/application/context.py](../../src/agent_forge/components/engine/application/context.py)
+- [src/agent_forge/components/engine/application/helpers.py](../../src/agent_forge/components/engine/application/helpers.py)
 - [src/agent_forge/components/engine/application/loop.py](../../src/agent_forge/components/engine/application/loop.py)
 - [tests/unit/test_engine.py](../../tests/unit/test_engine.py)
 
-约束说明：本章只增量建设 Engine 执行层，不推翻前两章协议与入口结构。
+本章只做 Engine，不跨组件偷塞别的能力。
 
-## 实施步骤
+---
 
-### 第 1 步：创建目录
+# 实施步骤
 
-```bash
-mkdir -p src/agent_forge/components/engine
-mkdir -p src/agent_forge/components/engine/application
+## 第 1 步：先看主流程视角，知道这一章到底在系统里做了什么
+
+先不要急着创建文件，先把主流程看清楚。
+
+### 1.1 整个 Engine 主链路
+
+```mermaid
+flowchart TD
+  A[AgentState] --> B[plan]
+  B --> C[ExecutionPlan]
+  C --> D[execute_steps]
+  D --> E[attempt pipeline]
+  E --> F[act]
+  F --> G[observe]
+  G --> H[reflect]
+  H --> I[decide]
+  I --> J[update]
+  I --> K[replan]
+  J --> L[finish]
+  K --> D
 ```
 
-```powershell
-New-Item -ItemType Directory -Force src/agent_forge/components/engine/application | Out-Null
+### 1.2 单步 attempt 链路
+
+```mermaid
+flowchart TD
+  A[time_budget_guard] --> B[act_start]
+  B --> C[act]
+  C --> D[observe]
+  D --> E[reflect]
+  E --> F[decide]
+  F --> G[continue]
+  F --> H[retry]
+  F --> I[replan]
+  F --> J[abort]
 ```
 
+### 代码讲解
 
-### 第 2 步：写导出文件
+这一节虽然还没上代码，但你必须先建立一个判断：
 
-创建命令：
+1. Engine 解决的是“执行协调”，不是“具体能力实现”。
+2. `plan` 只决定做什么，不决定怎么调模型或工具。
+3. `reflect` 是强制阶段，不是锦上添花。生产系统里，没有 `reflect`，就没有可重试、可中止、可重规划。
+4. `replan` 要做成正式动作，不然系统一旦遇到“计划本身错了”的场景，就只能失败退出。
 
-```bash
-touch src/agent_forge/components/engine/__init__.py
-```
+成功链路例子：
 
-```powershell
+1. 计划先产出 3 个步骤。
+2. 第一步成功，直接 `continue`。
+3. 第二步失败，但 `reflect` 判断应该换计划。
+4. `replan` 替换剩余步骤，最终任务仍然成功完成。
+
+失败链路例子：
+
+1. 计划里存在缺失依赖。
+2. Engine 在 `plan` 阶段就明确报 `PLAN_INVALID`。
+3. 它不会把非法计划带进执行阶段，更不会等到某一步跑崩才补锅。
+
+工程取舍：
+
+1. 我们没有直接上 DAG 工作流引擎，因为当前章节目标是“生产导向最小骨架”，不是一次把复杂度拉满。
+2. 但也没有停留在“固定 while + if/else”那种最低级 loop，因为那种结构一旦接 Tool Runtime、Observability、Context Engineering，很快会塌。
+
+---
+
+## 第 2 步：创建包与导出骨架
+
+先把包结构立起来，让后面的 `domain` 和 `application` 有明确边界。
+
+```codex
+New-Item -ItemType Directory -Force "src\\agent_forge\\components\\engine\\domain" | Out-Null
+New-Item -ItemType Directory -Force "src\\agent_forge\\components\\engine\\application" | Out-Null
 New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\__init__.py" | Out-Null
+New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\domain\\__init__.py" | Out-Null
+New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\application\\__init__.py" | Out-Null
 ```
 
 文件：[src/agent_forge/components/engine/__init__.py](../../src/agent_forge/components/engine/__init__.py)
 
 ```python
-"""Engine 组件导出。"""
+"""Engine component exports."""
 
-from agent_forge.components.engine.application.loop import (
+from agent_forge.components.engine.application import EngineLoop, EnginePipelineContext, EngineStage
+from agent_forge.components.engine.domain import (
     EngineLimits,
-    EngineLoop,
+    ExecutionPlan,
+    PlanAudit,
     PlanStep,
     ReflectDecision,
     RunContext,
     StepOutcome,
 )
 
-__all__ = ["EngineLimits", "EngineLoop", "StepOutcome", "ReflectDecision", "RunContext", "PlanStep"]
+__all__ = [
+    "EngineLimits",
+    "EngineLoop",
+    "EnginePipelineContext",
+    "EngineStage",
+    "ExecutionPlan",
+    "PlanAudit",
+    "StepOutcome",
+    "ReflectDecision",
+    "RunContext",
+    "PlanStep",
+]
 ```
 
-创建命令：
-
-```bash
-touch src/agent_forge/components/engine/application/__init__.py
+```codex
+New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\domain\\__init__.py" | Out-Null
 ```
 
-```powershell
+文件：[src/agent_forge/components/engine/domain/__init__.py](../../src/agent_forge/components/engine/domain/__init__.py)
+
+```python
+"""Engine 领域层导出。"""
+
+from .schemas import (
+    ActExecutor,
+    ActFn,
+    EngineEventListener,
+    EngineLimits,
+    ExecutionPlan,
+    PlanAudit,
+    PlanFn,
+    PlanInput,
+    PlanStep,
+    ReflectDecision,
+    ReflectFn,
+    RunContext,
+    StepOutcome,
+)
+
+__all__ = [
+    "ActExecutor",
+    "ActFn",
+    "EngineEventListener",
+    "EngineLimits",
+    "ExecutionPlan",
+    "PlanAudit",
+    "PlanFn",
+    "PlanInput",
+    "PlanStep",
+    "ReflectDecision",
+    "ReflectFn",
+    "RunContext",
+    "StepOutcome",
+]
+```
+
+```codex
 New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\application\\__init__.py" | Out-Null
 ```
 
@@ -265,104 +296,142 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\applicatio
 ```python
 """Engine application exports."""
 
-from .loop import EngineLimits, EngineLoop, PlanStep, ReflectDecision, RunContext, StepOutcome
+from agent_forge.components.engine.domain import (
+    EngineLimits,
+    ExecutionPlan,
+    PlanAudit,
+    PlanStep,
+    ReflectDecision,
+    RunContext,
+    StepOutcome,
+)
 
-__all__ = ["EngineLimits", "EngineLoop", "StepOutcome", "ReflectDecision", "RunContext", "PlanStep"]
+from .context import EnginePipelineContext, EngineStage
+from .loop import EngineLoop
+
+__all__ = [
+    "EngineLimits",
+    "EngineLoop",
+    "EnginePipelineContext",
+    "EngineStage",
+    "ExecutionPlan",
+    "PlanAudit",
+    "StepOutcome",
+    "ReflectDecision",
+    "RunContext",
+    "PlanStep",
+]
 ```
 
-#### 代码讲解
+### 代码讲解
 
-1. 只导出稳定公共接口（`EngineLoop`、`EngineLimits`、`PlanStep` 等），避免外部依赖内部私有实现。
-2. `application/__init__.py` 是子包边界：它保证 `engine` 与 `engine.application` 两层导出都稳定，避免调用方直接硬编码到 `loop.py` 文件路径。
-3. 这是“模块边界治理”，不是语法洁癖：业务方只依赖 `agent_forge.components.engine` 或 `agent_forge.components.engine.application`，后续你把执行器从线程池换成进程池、把事件结构升级，都不会影响调用方 import。
+导出层的作用不是“少打一层 import”，而是把公开边界稳定下来：
 
-### 第 2.5 步：先看执行链路图
+1. 外部应该依赖 `agent_forge.components.engine`，而不是深入内部子模块。
+2. 未来内部结构继续拆分时，外部调用点尽量不跟着一起震动。
+3. `domain` 负责定义“是什么”，`application` 负责定义“怎么跑”。
 
-```mermaid
-flowchart TD
-    A[plan] --> B[act]
-    B --> C[observe]
-    C --> D[reflect]
-    D -->|continue| E[update]
-    D -->|retry| B
-    D -->|abort| F[error]
-    E --> G{还有步骤?}
-    G -->|是| B
-    G -->|否| H[finish]
-    F --> H
+---
+
+## 第 3 步：定义领域模型，把 plan 从步骤列表升级成正式计划对象
+
+```codex
+New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\domain\\schemas.py" | Out-Null
 ```
 
-图解重点：
-1. `reflect` 是决策闸门，不是日志节点。  
-2. `retry` 回到 `act`，但必须受 `max_retry_per_step` 和 `time_budget` 双约束。  
-3. `abort` 不继续推进 `update`，直接记录错误并结束，保证状态一致性。  
-
-### 第 3 步：写 Engine 主循环
-
-创建命令：
-
-```bash
-touch src/agent_forge/components/engine/application/loop.py
-```
-
-```powershell
-New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\application\\loop.py" | Out-Null
-```
-
-文件：[src/agent_forge/components/engine/application/loop.py](../../src/agent_forge/components/engine/application/loop.py)
+文件：[src/agent_forge/components/engine/domain/schemas.py](../../src/agent_forge/components/engine/domain/schemas.py)
 
 ```python
-"""Engine(loop) 组件（asyncio 生产导向版）。
-
-核心目标：
-1. 主循环异步化：plan -> act -> observe -> reflect -> update -> finish
-2. 恢复一致性：stable step key 跳过已完成步骤
-3. 预算控制：max_steps / time_budget / step_timeout / retry
-4. 可扩展执行：act_executor 可注入；默认执行器支持协程与同步函数
-5. 性能语义：共享线程池、并发背压、attempt 指标、trace 输出摘要化
-"""
+"""Engine 领域类型定义。"""
 
 from __future__ import annotations
 
-import asyncio
-import hashlib
-import inspect
-import json
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
-from time import monotonic
 from typing import Any, Awaitable, Callable, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from agent_forge.components.protocol import AgentState, ErrorInfo, ExecutionEvent, FinalAnswer
+from agent_forge.components.protocol import AgentState, ErrorInfo, ExecutionEvent
+
 
 class EngineLimits(BaseModel):
-    """执行限制。"""
+    """执行限制配置。
+
+    Args:
+        max_steps: 最大执行步数，只统计真实执行步骤。
+        time_budget_ms: 整次 run 的总时间预算。
+        step_timeout_ms: 单次步骤执行超时。
+        max_retry_per_step: 单步最大重试次数。
+        executor_max_workers: 共享执行池最大线程数。
+        max_inflight_acts: 同时在途 act 数量上限。
+        trace_output_preview_chars: trace 输出预览最大字符数。
+
+    Returns:
+        EngineLimits: 校验后的执行限制对象。
+    """
 
     max_steps: int = Field(default=8, ge=1, description="最大执行步数（只统计实际执行步）")
     time_budget_ms: int = Field(default=3000, ge=1, description="run 级时间预算（毫秒）")
     step_timeout_ms: int = Field(default=1200, ge=1, description="单步超时（毫秒）")
     max_retry_per_step: int = Field(default=1, ge=0, description="单步最大重试次数")
+    max_replans: int = Field(default=2, ge=0, description="单次 run 允许的最大重规划次数")
     executor_max_workers: int = Field(default=8, ge=1, description="共享执行池线程数")
     max_inflight_acts: int = Field(default=32, ge=1, description="同时在途 act 上限（背压）")
     trace_output_preview_chars: int = Field(default=240, ge=32, description="trace 输出预览最大字符数")
 
+
 class StepOutcome(BaseModel):
-    """单步执行结果。"""
+    """单步执行结果。
+
+    Args:
+        status: 步骤状态。
+        output: 步骤输出。
+        error: 错误信息。
+
+    Returns:
+        StepOutcome: 标准化后的步骤结果。
+    """
 
     status: Literal["ok", "error"] = Field(..., description="步骤状态")
     output: dict[str, Any] = Field(default_factory=dict, description="步骤输出")
     error: ErrorInfo | None = Field(default=None, description="错误信息")
 
-class ReflectDecision(BaseModel):
-    """反思决策结果。"""
 
-    action: Literal["continue", "retry", "abort"] = Field(..., description="反思动作")
+class ReflectDecision(BaseModel):
+    """反思决策结果。
+
+    Args:
+        action: 反思动作。
+        reason: 决策原因。
+        replacement_plan: 当动作是 replan 时提供的新计划。
+        plan_update_mode: 重规划时如何处理剩余步骤。
+
+    Returns:
+        ReflectDecision: 标准化决策对象。
+    """
+
+    action: Literal["continue", "retry", "abort", "replan"] = Field(..., description="反思动作")
     reason: str = Field(default="", description="决策原因")
+    replacement_plan: ExecutionPlan | None = Field(default=None, description="重规划后的替换计划")
+    plan_update_mode: Literal["replace_remaining", "append_remaining"] = Field(
+        default="replace_remaining", description="重规划更新模式"
+    )
+
 
 class RunContext(BaseModel):
-    """运行隔离与版本上下文。"""
+    """运行隔离与版本上下文。
+
+    Args:
+        tenant_id: 租户 ID。
+        user_id: 用户 ID。
+        config_version: 配置版本。
+        model_version: 模型版本。
+        tool_version: 工具版本。
+        policy_version: 策略版本。
+
+    Returns:
+        RunContext: 校验后的运行上下文。
+    """
 
     tenant_id: str | None = Field(default=None, description="租户 ID（可选）")
     user_id: str | None = Field(default=None, description="用户 ID（可选）")
@@ -371,23 +440,165 @@ class RunContext(BaseModel):
     tool_version: str = Field(default="unset", description="工具版本")
     policy_version: str = Field(default="v1", description="策略版本")
 
+
 class PlanStep(BaseModel):
-    """标准化步骤对象。"""
+    """标准化步骤对象。
+
+    Args:
+        key: 稳定步骤键。
+        name: 步骤名称。
+        kind: 步骤类型，用于区分检索、工具、生成等执行意图。
+        payload: 步骤扩展数据。
+        depends_on: 依赖步骤键列表。
+        priority: 执行优先级，数值越小优先级越高。
+        timeout_ms: 当前步骤的超时覆盖值。
+        max_retry_per_step: 当前步骤的重试覆盖值。
+        metadata: 步骤元数据。
+
+    Returns:
+        PlanStep: 标准化后的步骤对象。
+    """
 
     key: str = Field(..., min_length=1, description="稳定步骤键")
     name: str = Field(..., min_length=1, description="步骤名称")
+    kind: str = Field(default="generic", min_length=1, description="步骤类型")
     payload: dict[str, Any] = Field(default_factory=dict, description="步骤扩展数据")
+    depends_on: list[str] = Field(default_factory=list, description="依赖步骤键")
+    priority: int = Field(default=100, description="步骤优先级")
+    timeout_ms: int | None = Field(default=None, ge=1, description="步骤级超时覆盖")
+    max_retry_per_step: int | None = Field(default=None, ge=0, description="步骤级重试覆盖")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="步骤元数据")
 
-PlanFn = Callable[[AgentState], list[str | dict[str, Any] | PlanStep]]
+
+class PlanAudit(BaseModel):
+    """计划审计信息。
+    Args:
+        created_by: 计划创建来源，例如 planner、human、policy。
+        previous_revision: 上一个计划修订号。
+        triggered_by_step_key: 触发重规划的步骤键。
+        triggered_by_step_name: 触发重规划的步骤名称。
+        change_summary: 本次计划生成或修订摘要。
+    Returns:
+        PlanAudit: 标准化后的计划审计对象。
+    """
+
+    created_by: str = Field(default="planner", description="计划创建来源")
+    previous_revision: int | None = Field(default=None, ge=1, description="上一个计划修订号")
+    triggered_by_step_key: str = Field(default="", description="触发计划变化的步骤键")
+    triggered_by_step_name: str = Field(default="", description="触发计划变化的步骤名称")
+    change_summary: str = Field(default="", description="本次计划变化摘要")
+
+
+class ExecutionPlan(BaseModel):
+    """标准化执行计划对象。
+
+    Args:
+        plan_id: 计划唯一 ID。
+        revision: 计划修订号。
+        origin: 计划来源，例如 initial、replan、human_patch。
+        reason: 本次计划生成或修订原因。
+        global_task: 本轮计划服务的全局任务。
+        steps: 标准化步骤列表。
+        metadata: 计划元数据。
+
+    Returns:
+        ExecutionPlan: 标准化执行计划。
+    """
+
+    plan_id: str = Field(default_factory=lambda: f"plan_{uuid4().hex}", min_length=1, description="计划 ID")
+    revision: int = Field(default=1, ge=1, description="计划修订号")
+    origin: str = Field(default="initial", min_length=1, description="计划来源")
+    reason: str = Field(default="", description="计划生成原因")
+    global_task: str = Field(default="", description="全局任务目标")
+    success_criteria: list[str] = Field(default_factory=list, description="计划成功判定标准")
+    constraints: list[str] = Field(default_factory=list, description="计划执行约束")
+    risk_level: Literal["low", "medium", "high", "critical"] = Field(default="medium", description="计划风险等级")
+    audit: PlanAudit = Field(default_factory=PlanAudit, description="计划审计信息")
+    steps: list[PlanStep] = Field(default_factory=list, description="标准化步骤列表")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="计划元数据")
+
+
+PlanInput = list[str | dict[str, Any] | PlanStep] | ExecutionPlan
+PlanFn = Callable[[AgentState], PlanInput]
 ActFn = Callable[[AgentState, PlanStep, int], StepOutcome | Awaitable[StepOutcome]]
 ReflectFn = Callable[
     [AgentState, PlanStep, int, StepOutcome], ReflectDecision | Awaitable[ReflectDecision]
 ]
 ActExecutor = Callable[[ActFn, AgentState, PlanStep, int, int], Awaitable[StepOutcome]]
+EngineEventListener = Callable[[ExecutionEvent], None]
+```
 
-@dataclass
-class _RunStats:
-    """内部运行统计。"""
+### 代码讲解
+
+这里要分 4 层看：
+
+1. `EngineLimits` 负责运行限制。
+2. `PlanStep`、`StepOutcome`、`ReflectDecision` 负责步骤、结果和决策。
+3. `PlanAudit` 负责计划审计。
+4. `ExecutionPlan` 负责正式计划对象。
+
+这一章真正的升级点不是 `asyncio`，而是 `ExecutionPlan` 已经不再是“步骤列表”，而是同时承载：
+
+1. 计划身份：`plan_id`、`revision`、`origin`
+2. 任务语义：`global_task`
+3. 治理语义：`success_criteria`、`constraints`、`risk_level`
+4. 审计语义：`audit`
+5. 执行主体：`steps`
+6. 扩展位：`metadata`
+
+成功链路例子：
+
+1. 计划对象给出全局任务和成功标准。
+2. Engine 把这些字段写进 `plan`、`replan`、`finish` 事件。
+3. 后续 Observability、Evaluator 才有稳定输入可读。
+
+失败链路例子：
+
+如果这里继续用 `list[str]` 承载计划，会立刻遇到：
+
+1. 重规划后不知道是不是同一轮任务。
+2. 回放时看不到计划修订链。
+3. 风险等级和执行约束无处可放。
+
+---
+
+## 第 4 步：定义 pipeline 共享上下文，把运行态从 loop.py 里剥出来
+
+```codex
+New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\application\\context.py" | Out-Null
+```
+
+文件：[src/agent_forge/components/engine/application/context.py](../../src/agent_forge/components/engine/application/context.py)
+
+```python
+"""Engine pipeline 上下文与阶段定义。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Awaitable, Callable, Literal
+
+from agent_forge.components.engine.domain.schemas import (
+    ActFn,
+    EngineLimits,
+    ExecutionPlan,
+    PlanFn,
+    PlanStep,
+    ReflectDecision,
+    ReflectFn,
+    RunContext,
+    StepOutcome,
+)
+from agent_forge.components.protocol import AgentState, ErrorInfo
+
+
+@dataclass(slots=True)
+class RunStats:
+    """运行统计聚合对象。
+
+    Returns:
+        RunStats: 当前 run 的累计统计信息。
+    """
 
     total_planned_steps: int = 0
     executed_steps: int = 0
@@ -396,25 +607,738 @@ class _RunStats:
     reflected_retry_count: int = 0
     skipped_steps: int = 0
     attempt_count: int = 0
+    replan_count: int = 0
     stop_reason: str = "finished"
 
+
+StageHandler = Callable[["EnginePipelineContext"], None | Awaitable[None]]
+StageCustomizer = Callable[[list["EngineStage"]], list["EngineStage"]]
+
+
+@dataclass(slots=True)
+class EngineStage:
+    """可插拔阶段定义。
+
+    Args:
+        name: 阶段名称。
+        handler: 阶段处理函数。
+
+    Returns:
+        EngineStage: 单个可插拔阶段对象。
+    """
+
+    name: str
+    handler: StageHandler
+
+
+@dataclass(slots=True)
+class EnginePipelineContext:
+    """Engine pipeline 共享上下文。
+
+    Args:
+        state: 当前运行状态。
+        run_context: 运行隔离与版本信息。
+        plan_fn: 计划函数。
+        act_fn: 执行函数。
+        reflect_fn: 反思函数。
+        started_at_ms: 启动时间戳。
+        stats: 运行统计。
+        event_writer: 统一事件写入函数。
+        limits: Engine 限制配置。
+
+    Returns:
+        EnginePipelineContext: 供各阶段共享的上下文。
+    """
+
+    state: AgentState
+    run_context: RunContext
+    plan_fn: PlanFn
+    act_fn: ActFn
+    reflect_fn: ReflectFn
+    started_at_ms: int
+    stats: RunStats
+    event_writer: Callable[
+        [
+            AgentState,
+            Literal["plan", "tool_call", "tool_result", "state_update", "finish", "error"],
+            str,
+            dict[str, Any],
+            ErrorInfo | None,
+        ],
+        None,
+    ]
+    limits: EngineLimits
+    current_plan: ExecutionPlan | None = None
+    plan_steps: list[PlanStep] = field(default_factory=list)
+    completed_step_keys: set[str] = field(default_factory=set)
+    current_step: PlanStep | None = None
+    current_step_index: int = 0
+    current_step_id: str = ""
+    current_attempt: int = 0
+    current_outcome: StepOutcome | None = None
+    current_decision: ReflectDecision | None = None
+    current_output_summary: str = ""
+    current_output_hash: str = ""
+    stop_requested: bool = False
+    finish_emitted: bool = False
+    retry_requested: bool = False
+    replan_requested: bool = False
+    step_completed: bool = False
+    step_terminal: bool = False
+
+    def append_event(
+        self,
+        event_type: Literal["plan", "tool_call", "tool_result", "state_update", "finish", "error"],
+        step_id: str,
+        payload: dict[str, Any],
+        error: ErrorInfo | None = None,
+    ) -> None:
+        """通过统一入口写事件。
+
+        Args:
+            event_type: 事件类型。
+            step_id: 步骤 ID。
+            payload: 事件载荷。
+            error: 错误对象。
+
+        Returns:
+            None
+        """
+
+        self.event_writer(self.state, event_type, step_id, payload, error)
+
+    def request_stop(self, reason: str) -> None:
+        """请求终止本轮运行。
+
+        Args:
+            reason: 停止原因。
+
+        Returns:
+            None
+        """
+
+        self.stats.stop_reason = reason
+        self.stop_requested = True
+
+    def prepare_step(self, step: PlanStep, step_index: int) -> None:
+        """切换当前步骤。
+
+        Args:
+            step: 当前步骤。
+            step_index: 步骤序号。
+
+        Returns:
+            None
+        """
+
+        self.current_step = step
+        self.current_step_index = step_index
+        self.current_step_id = f"step_{step_index}"
+
+    def apply_plan(self, plan: ExecutionPlan) -> None:
+        """将标准化计划写入上下文。
+
+        Args:
+            plan: 标准化执行计划。
+
+        Returns:
+            None
+        """
+
+        self.current_plan = plan
+        self.plan_steps = list(plan.steps)
+        self.stats.total_planned_steps = len(plan.steps)
+
+    def replace_plan_steps(self, steps: list[PlanStep]) -> None:
+        """同步替换当前运行计划中的全部步骤。
+        Args:
+            steps: 新的标准化步骤列表。
+        Returns:
+            None
+        """
+
+        normalized_steps = list(steps)
+        if self.current_plan is None:
+            self.current_plan = ExecutionPlan(steps=normalized_steps)
+        else:
+            self.current_plan = self.current_plan.model_copy(update={"steps": normalized_steps})
+        self.plan_steps = normalized_steps
+        self.stats.total_planned_steps = len(normalized_steps)
+
+    def append_plan_steps(self, steps: list[PlanStep]) -> None:
+        """向当前运行计划尾部追加步骤，并保持计划对象同步。
+        Args:
+            steps: 要追加的标准化步骤列表。
+        Returns:
+            None
+        """
+
+        if not steps:
+            return
+        self.replace_plan_steps([*self.plan_steps, *steps])
+
+    def prepare_attempt(self, attempt: int) -> None:
+        """重置当前尝试态。
+
+        Args:
+            attempt: 当前尝试序号。
+
+        Returns:
+            None
+        """
+
+        self.current_attempt = attempt
+        self.current_outcome = None
+        self.current_decision = None
+        self.current_output_summary = ""
+        self.current_output_hash = ""
+        self.retry_requested = False
+        self.replan_requested = False
+        self.step_completed = False
+        self.step_terminal = False
+
+    def current_step_key(self) -> str:
+        """返回当前步骤键。
+
+        Returns:
+            str: 当前步骤键；若无步骤则返回空字符串。
+        """
+
+        return self.current_step.key if self.current_step is not None else ""
+
+    def current_step_name(self) -> str:
+        """返回当前步骤名称。
+
+        Returns:
+            str: 当前步骤名称；若无步骤则返回空字符串。
+        """
+
+        return self.current_step.name if self.current_step is not None else ""
+```
+
+### 代码讲解
+
+`context.py` 解决两个关键问题：
+
+1. 把运行态从 `loop.py` 剥出来。
+2. 给可插拔阶段一个稳定、受控的共享上下文。
+
+最关键的不是字段多，而是它把计划变更收口成了方法：
+
+1. `apply_plan(...)`
+2. `replace_plan_steps(...)`
+3. `append_plan_steps(...)`
+
+这一步是上一轮质检之后专门补的，因为如果允许扩展阶段直接改 `plan_steps`，`current_plan` 和真实运行队列就可能失同步。
+
+---
+
+## 第 5 步：补 helper，把计划标准化、调度、重规划规则从 loop.py 分出去
+
+```codex
+New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\application\\helpers.py" | Out-Null
+```
+
+文件：[src/agent_forge/components/engine/application/helpers.py](../../src/agent_forge/components/engine/application/helpers.py)
+
+```python
+"""Engine 运行辅助函数。"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from time import monotonic
+from typing import Any, Literal
+
+from agent_forge.components.engine.application.context import RunStats
+from agent_forge.components.engine.domain.schemas import EngineLimits, ExecutionPlan, PlanAudit, PlanInput, PlanStep
+from agent_forge.components.protocol import AgentState, FinalAnswer
+
+
+def default_now_ms() -> int:
+    """返回当前毫秒时间戳。
+
+    Returns:
+        int: 当前单调时钟毫秒值。
+    """
+
+    return int(monotonic() * 1000)
+
+
+def build_final_answer(stats: RunStats, started_at: int, now_ms: int) -> FinalAnswer:
+    """构造通用最终输出。
+
+    Args:
+        stats: 运行统计。
+        started_at: 启动时间戳。
+        now_ms: 当前时间戳。
+
+    Returns:
+        FinalAnswer: 面向上层稳定暴露的最终结果。
+    """
+
+    status: Literal["success", "partial", "failed"] = "success"
+    if stats.failed_steps > 0:
+        status = "failed"
+    elif stats.stop_reason != "finished":
+        status = "partial"
+
+    elapsed_ms = max(1, now_ms - started_at)
+    steps_per_second = round((stats.executed_steps / elapsed_ms) * 1000, 3)
+
+    return FinalAnswer(
+        status=status,
+        summary=f"Engine 执行结束：{stats.stop_reason}",
+        output={
+            "total_planned_steps": stats.total_planned_steps,
+            "executed_steps": stats.executed_steps,
+            "success_steps": stats.success_steps,
+            "failed_steps": stats.failed_steps,
+            "reflected_retry_count": stats.reflected_retry_count,
+            "replan_count": stats.replan_count,
+            "skipped_steps": stats.skipped_steps,
+            "attempt_count": stats.attempt_count,
+            "stop_reason": stats.stop_reason,
+            "elapsed_ms": elapsed_ms,
+            "steps_per_second": steps_per_second,
+        },
+        artifacts=[{"type": "engine_stats", "name": "loop_result"}],
+        references=[],
+    )
+
+
+def completed_step_keys(state: AgentState) -> set[str]:
+    """提取历史已完成步骤键。
+
+    Args:
+        state: 运行状态。
+
+    Returns:
+        set[str]: 已完成步骤键集合。
+    """
+
+    for event in reversed(state.events):
+        if event.event_type != "finish":
+            continue
+        keys = event.payload.get("completed_step_keys")
+        if isinstance(keys, list):
+            parsed = {item for item in keys if isinstance(item, str) and item}
+            if parsed:
+                return parsed
+
+    completed: set[str] = set()
+    for event in state.events:
+        if event.event_type != "state_update":
+            continue
+        if event.payload.get("phase") != "update":
+            continue
+        step_key = event.payload.get("step_key")
+        if isinstance(step_key, str) and step_key:
+            completed.add(step_key)
+    return completed
+
+
+def exceed_time_budget(started_at: int, time_budget_ms: int, now_ms: int) -> bool:
+    """检查 run 级时间预算。
+
+    Args:
+        started_at: 启动时间。
+        time_budget_ms: 总预算毫秒。
+        now_ms: 当前时间。
+
+    Returns:
+        bool: 是否已超预算。
+    """
+
+    return (now_ms - started_at) > time_budget_ms
+
+
+def summarize_output(output: dict[str, Any], limits: EngineLimits) -> tuple[str, str]:
+    """对步骤输出做摘要。
+
+    Args:
+        output: 步骤输出。
+        limits: Engine 限制配置。
+
+    Returns:
+        tuple[str, str]: 输出摘要与输出哈希。
+    """
+
+    raw = json.dumps(output, ensure_ascii=False, sort_keys=True)
+    output_hash = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+    preview = raw[: limits.trace_output_preview_chars]
+    summary = f"len={len(raw)},preview={preview}"
+    return summary, output_hash
+
+
+def normalize_execution_plan(raw_plan: PlanInput) -> ExecutionPlan:
+    """标准化执行计划。
+
+    Args:
+        raw_plan: 原始计划输入。
+
+    Returns:
+        ExecutionPlan: 标准化后的执行计划对象。
+    """
+
+    normalized: list[PlanStep] = []
+    if isinstance(raw_plan, ExecutionPlan):
+        if not raw_plan.steps:
+            return raw_plan.model_copy(update={"steps": []})
+        for step in raw_plan.steps:
+            normalized.append(_normalize_step(step))
+        return raw_plan.model_copy(update={"steps": normalized})
+
+    for item in raw_plan:
+        if isinstance(item, PlanStep):
+            normalized.append(_normalize_step(item))
+            continue
+        if isinstance(item, str):
+            key = stable_hash({"name": item})
+            normalized.append(PlanStep(key=key, name=item, payload={}))
+            continue
+        step_id = item.get("id") if isinstance(item.get("id"), str) else ""
+        step_name = item.get("name") if isinstance(item.get("name"), str) else "unnamed_step"
+        payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+        if not step_id:
+            step_id = stable_hash({"name": step_name, "payload": payload})
+        normalized.append(
+            PlanStep(
+                key=step_id,
+                name=step_name,
+                kind=item.get("kind") if isinstance(item.get("kind"), str) and item.get("kind") else "generic",
+                payload=payload,
+                depends_on=item.get("depends_on") if isinstance(item.get("depends_on"), list) else [],
+                priority=item.get("priority") if isinstance(item.get("priority"), int) else 100,
+                timeout_ms=item.get("timeout_ms") if isinstance(item.get("timeout_ms"), int) else None,
+                max_retry_per_step=item.get("max_retry_per_step")
+                if isinstance(item.get("max_retry_per_step"), int)
+                else None,
+                metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+            )
+        )
+
+    return ExecutionPlan(steps=normalized)
+
+
+def build_replanned_plan(
+    current_plan: ExecutionPlan | None,
+    replacement_plan: ExecutionPlan,
+    reason: str,
+    trigger_step: PlanStep | None = None,
+) -> ExecutionPlan:
+    """构建重规划后的标准计划。
+
+    Args:
+        current_plan: 当前运行中的计划。
+        replacement_plan: reflect 返回的新计划。
+        reason: 本次重规划原因。
+
+    Returns:
+        ExecutionPlan: 修订后的计划对象。
+    """
+
+    replacement_fields = set(replacement_plan.model_fields_set)
+    replacement_audit_fields = set(replacement_plan.audit.model_fields_set) if "audit" in replacement_fields else set()
+    normalized = normalize_execution_plan(replacement_plan)
+    base_plan = current_plan or ExecutionPlan()
+    next_revision = normalized.revision if normalized.revision > base_plan.revision else base_plan.revision + 1
+    next_risk_level = normalized.risk_level if "risk_level" in replacement_fields else base_plan.risk_level
+    next_created_by = normalized.audit.created_by if "created_by" in replacement_audit_fields else base_plan.audit.created_by
+    next_change_summary = (
+        normalized.audit.change_summary
+        if "change_summary" in replacement_audit_fields
+        else normalized.reason or reason
+    )
+    return normalized.model_copy(
+        update={
+            "plan_id": base_plan.plan_id,
+            "revision": next_revision,
+            "origin": normalized.origin if normalized.origin != "initial" else "replan",
+            "reason": normalized.reason or reason,
+            "global_task": normalized.global_task or base_plan.global_task,
+            "success_criteria": normalized.success_criteria or list(base_plan.success_criteria),
+            "constraints": normalized.constraints or list(base_plan.constraints),
+            "risk_level": next_risk_level,
+            "audit": PlanAudit(
+                created_by=next_created_by,
+                previous_revision=base_plan.revision,
+                triggered_by_step_key=trigger_step.key if trigger_step is not None else "",
+                triggered_by_step_name=trigger_step.name if trigger_step is not None else "",
+                change_summary=next_change_summary,
+            ),
+            "metadata": {**base_plan.metadata, **normalized.metadata},
+        }
+    )
+
+
+def schedule_execution_plan(plan: ExecutionPlan, completed_keys: set[str] | None = None) -> ExecutionPlan:
+    """按依赖与优先级收口执行顺序。
+    Args:
+        plan: 原始标准化计划对象。
+        completed_keys: 已完成步骤键集合，用于满足外部依赖。
+    Returns:
+        ExecutionPlan: 调度后的计划对象。
+    Raises:
+        ValueError: 依赖缺失或存在循环依赖时抛出。
+    """
+
+    completed = completed_keys or set()
+    steps = list(plan.steps)
+    if not steps:
+        return plan.model_copy(update={"steps": []})
+
+    step_by_key = {step.key: step for step in steps}
+    missing_dependencies: list[str] = []
+    for step in steps:
+        for dependency in step.depends_on:
+            if dependency in completed:
+                continue
+            if dependency not in step_by_key:
+                missing_dependencies.append(f"{step.key}->{dependency}")
+    if missing_dependencies:
+        missing = ", ".join(sorted(missing_dependencies))
+        raise ValueError(f"plan contains missing dependencies: {missing}")
+
+    original_order = {step.key: index for index, step in enumerate(steps)}
+    satisfied = set(completed)
+    remaining = {step.key: step for step in steps}
+    scheduled: list[PlanStep] = []
+
+    while remaining:
+        ready = [
+            step
+            for step in remaining.values()
+            if all(dependency in satisfied for dependency in step.depends_on)
+        ]
+        if not ready:
+            cycle_nodes = ", ".join(sorted(remaining.keys()))
+            raise ValueError(f"plan contains cyclic dependencies: {cycle_nodes}")
+
+        ready.sort(key=lambda step: (step.priority, original_order[step.key]))
+        selected = ready[0]
+        scheduled.append(selected)
+        satisfied.add(selected.key)
+        remaining.pop(selected.key)
+
+    return plan.model_copy(update={"steps": scheduled})
+
+
+def normalize_plan_steps(raw_plan: PlanInput) -> list[PlanStep]:
+    """向后兼容的步骤标准化入口。
+
+    Args:
+        raw_plan: 原始计划输入。
+
+    Returns:
+        list[PlanStep]: 标准化后的步骤列表。
+    """
+
+    return normalize_execution_plan(raw_plan).steps
+
+
+def _normalize_step(step: PlanStep) -> PlanStep:
+    """收口单个步骤对象。
+
+    Args:
+        step: 原始步骤对象。
+
+    Returns:
+        PlanStep: 规范化后的步骤对象。
+    """
+
+    return step.model_copy(
+        update={
+            "kind": step.kind or "generic",
+            "depends_on": list(step.depends_on),
+            "payload": dict(step.payload),
+            "metadata": dict(step.metadata),
+        }
+    )
+
+
+def stable_hash(value: dict[str, Any]) -> str:
+    """生成稳定哈希。
+
+    Args:
+        value: 待哈希对象。
+
+    Returns:
+        str: 稳定步骤键。
+    """
+
+    raw = json.dumps(value, sort_keys=True, ensure_ascii=False)
+    return f"step_{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:12]}"
+```
+
+### 代码讲解
+
+这一段 helper 代码最重要的是 4 件事：
+
+1. `normalize_execution_plan(...)`：把旧输入和新输入统一收口成正式计划对象。
+2. `schedule_execution_plan(...)`：让 `depends_on` 和 `priority` 真正进入调度语义。
+3. `build_replanned_plan(...)`：让 `replan` 成为正式计划修订，而不是简单替换列表。
+4. `build_final_answer(...)`：统一汇总最终执行结果。
+
+这里有一个非常关键的细节：
+
+`build_replanned_plan(...)` 现在会基于 `model_fields_set` 判断 replacement plan 是否真的显式设置过治理字段。这样当 replacement plan 只是想换步骤，而不是改风险等级时，原来的 `risk_level` 和 `audit.created_by` 不会被默认值静默覆盖。
+
+这类问题如果不在 helper 层收口，后面是很难查的，因为它表面上不是报错，而是“字段值慢慢变脏”。
+
+### 名词对位讲解：读懂 helpers.py 里最容易混的 5 个词
+
+1. `normalize`：把多种输入形态收口成统一内部对象。它解决的是“兼容旧调用方式”，不是“做额外业务判断”。
+2. `schedule`：给已经合法的计划排执行顺序。它解决的是“先做谁、后做谁”，不是“计划该不该存在”。
+3. `replanned plan`：重规划后的正式计划对象。它不是“剩余步骤列表”，而是“修订后的整版计划语义”。
+4. `model_fields_set`：Pydantic 记录“哪些字段是调用方显式传入的”。这里用它是为了区分“调用方真的要改这个字段”和“只是吃到了默认值”。
+5. `summary/hash`：输出摘要和输出指纹。摘要给人看，hash 给系统比对，两个都不是为了业务结果本身，而是为了观测和回放。
+
+### 再看一遍成功链路：helpers.py 到底保护了什么
+
+假设 planner 返回这样一个计划：
+
+1. `step-b` 无依赖，优先级 10
+2. `step-a` 无依赖，优先级 50
+3. `step-c` 依赖 `step-a`
+
+进入 helper 层后，实际会发生：
+
+1. `normalize_execution_plan(...)` 先把输入统一成 `ExecutionPlan`
+2. `schedule_execution_plan(...)` 再按“依赖满足 + priority + 原顺序”排成 `step-b -> step-a -> step-c`
+3. Engine 拿到的是已经可执行的计划，而不是一坨半结构化原始输入
+
+这个成功链路证明了一件事：
+
+**helper 层不是工具函数堆，它是 Engine 计划语义真正落地的地方。**
+
+### 再看一遍失败链路：为什么 helper 层必须足够严格
+
+典型失败有两类：
+
+1. 计划依赖缺失  
+例子：`step-a` 依赖 `missing-step`
+结果：`schedule_execution_plan(...)` 直接抛错，Engine 在 `plan` 阶段报 `PLAN_INVALID`
+
+2. 重规划省略治理字段  
+例子：replacement plan 只想换步骤，没有想改风险等级
+结果：如果不用 `model_fields_set`，原计划可能被默认值偷偷覆盖
+
+这两类失败有一个共同点：
+
+它们都不应该拖到 `loop.py` 的深处才爆。  
+越早在 helper 层收口，后面的执行链路越干净。
+
+### 为什么不把这些规则都塞回 loop.py
+
+表面上也能工作，但代价很高：
+
+1. `loop.py` 会再次膨胀成上千行的大文件
+2. 计划调度和计划修订规则会跟执行流程缠在一起
+3. 测试很难做到“单看计划规则就能定位问题”
+
+当前拆法的取舍是：
+
+1. `loop.py` 负责“怎么驱动”
+2. `helpers.py` 负责“规则如何收口”
+
+这不是为了好看，而是为了让后续你继续演进 DAG、分支和计划审计时，不需要回头推翻主循环。
+
+---
+
+## 第 6 步：实现 EngineLoop，把主流程真正跑起来
+
+```codex
+New-Item -ItemType File -Force "src\\agent_forge\\components\\engine\\application\\loop.py" | Out-Null
+```
+
+文件：[src/agent_forge/components/engine/application/loop.py](../../src/agent_forge/components/engine/application/loop.py)
+
+```python
+"""Engine 运行时 facade。"""
+
+from __future__ import annotations
+
+import asyncio
+import inspect
+from concurrent.futures import ThreadPoolExecutor
+from typing import Awaitable, Callable, Literal
+
+from agent_forge.components.engine.application.context import (
+    EnginePipelineContext,
+    EngineStage,
+    RunStats,
+    StageCustomizer,
+)
+from agent_forge.components.engine.application.helpers import (
+    build_final_answer,
+    build_replanned_plan,
+    completed_step_keys,
+    default_now_ms,
+    exceed_time_budget,
+    normalize_execution_plan,
+    schedule_execution_plan,
+    summarize_output,
+)
+from agent_forge.components.engine.domain import (
+    ActExecutor,
+    ActFn,
+    EngineEventListener,
+    EngineLimits,
+    ExecutionPlan,
+    PlanFn,
+    PlanStep,
+    ReflectDecision,
+    ReflectFn,
+    RunContext,
+    StepOutcome,
+)
+from agent_forge.components.protocol import AgentState, ErrorInfo, ExecutionEvent
+from agent_forge.support.logging import get_logger
+
+logger = get_logger(__name__)
+
+
 class EngineLoop:
-    """生产导向 Engine 循环实现（asyncio）。"""
+    """生产导向 Engine 循环实现（阶段可插拔 facade）。
+
+    Args:
+        limits: 执行限制配置。
+        now_ms: 当前时间函数。
+        act_executor: 自定义执行器。
+        event_listener: 事件监听器。
+        pipeline_customizer: 顶层阶段定制器。
+        attempt_stage_customizer: 单步尝试阶段定制器。
+
+    Returns:
+        EngineLoop: 可运行的 Engine facade。
+    """
 
     def __init__(
         self,
         limits: EngineLimits | None = None,
         now_ms: Callable[[], int] | None = None,
         act_executor: ActExecutor | None = None,
+        event_listener: EngineEventListener | None = None,
+        pipeline_customizer: StageCustomizer | None = None,
+        attempt_stage_customizer: StageCustomizer | None = None,
     ) -> None:
         self.limits = limits or EngineLimits()
-        self._now_ms = now_ms or (lambda: int(monotonic() * 1000))
+        self._now_ms = now_ms or default_now_ms
         self._executor = ThreadPoolExecutor(max_workers=self.limits.executor_max_workers)
         self._inflight_guard = asyncio.Semaphore(self.limits.max_inflight_acts)
         self._act_executor = act_executor or self._default_act_executor
+        self._event_listener = event_listener
+        self._pipeline_customizer = pipeline_customizer
+        self._attempt_stage_customizer = attempt_stage_customizer
 
     def close(self) -> None:
-        """释放共享执行池资源。"""
+        """释放共享执行池资源。
+
+        Returns:
+            None
+        """
 
         self._executor.shutdown(wait=False, cancel_futures=True)
 
@@ -426,193 +1350,38 @@ class EngineLoop:
         reflect_fn: ReflectFn | None = None,
         context: RunContext | None = None,
     ) -> AgentState:
-        """异步执行一轮完整 loop，并返回更新后的 state。"""
+        """异步执行一轮完整 loop。
 
-        context = context or RunContext()
-        reflect_fn = reflect_fn or self._default_reflect
-        started_at = self._now_ms()
-        stats = _RunStats()
-        # 1. 初始化阶段：标准化输入并记录起始状态
-        plan_steps = self._normalize_plan_steps(plan_fn(state))
-        stats.total_planned_steps = len(plan_steps)
-        completed_step_keys = self._completed_step_keys(state)
+        Args:
+            state: 当前状态对象。
+            plan_fn: 计划函数。
+            act_fn: 执行函数。
+            reflect_fn: 反思函数。
+            context: 运行上下文。
 
-        # 2. plan 事件落盘：无论成功与否先记录计划
-        self._append_event(
+        Returns:
+            AgentState: 更新后的状态对象。
+        """
+
+        pipeline_context = EnginePipelineContext(
             state=state,
-            event_type="plan",
-            step_id="step_plan",
-            payload={
-                "plan_steps": [{"key": s.key, "name": s.name} for s in plan_steps],
-                "plan_count": len(plan_steps),
-                "context": context.model_dump(),
-            },
+            run_context=context or RunContext(),
+            plan_fn=plan_fn,
+            act_fn=act_fn,
+            reflect_fn=reflect_fn or self._default_reflect,
+            started_at_ms=self._now_ms(),
+            stats=RunStats(),
+            event_writer=self._append_event,
+            limits=self.limits,
         )
 
-        # 3. 遍历步骤：按顺序执行标准化后的计划步骤
-        for idx, step in enumerate(plan_steps, start=1):
-            step_id = f"step_{idx}"
+        for stage in self._build_pipeline():
+            await self._run_stage(stage, pipeline_context)
 
-            # 3.1 尝试跳过已完成步骤 (resume_skip)
-            if step.key in completed_step_keys:
-                stats.skipped_steps += 1
-                self._append_event(
-                    state=state,
-                    event_type="state_update",
-                    step_id=step_id,
-                    payload={"phase": "resume_skip", "step_key": step.key, "step_name": step.name, "attempt": 0},
-                )
-                continue
+        if not pipeline_context.finish_emitted:
+            await self._stage_finish(pipeline_context)
 
-            # 3.2 检查执行步数是否超限 (max_steps 预算保护)
-            stats.executed_steps += 1
-            if stats.executed_steps > self.limits.max_steps:
-                stats.stop_reason = "max_steps_reached"
-                self._append_event(
-                    state=state,
-                    event_type="error",
-                    step_id=step_id,
-                    payload={"step_key": step.key, "step_name": step.name, "attempt": 0},
-                    error=ErrorInfo(
-                        error_code="MAX_STEPS_REACHED",
-                        error_message="Engine 达到最大执行步数限制",
-                        retryable=False,
-                    ),
-                )
-                break
-
-            # 4. 单步执行尝试循环 (attempt loop)
-            attempt = 0
-            while True:
-                # 4.1 检查系统总时间预算 (防止因无限重试导致全局超时)
-                if self._exceed_time_budget(started_at):
-                    stats.stop_reason = "time_budget_exceeded"
-                    self._append_event(
-                        state=state,
-                        event_type="error",
-                        step_id=step_id,
-                        payload={"step_key": step.key, "step_name": step.name, "attempt": attempt},
-                        error=ErrorInfo(
-                            error_code="TIME_BUDGET_EXCEEDED",
-                            error_message="Engine 超出时间预算",
-                            retryable=False,
-                        ),
-                    )
-                    break
-
-                # 4.2 记录 act 开始状态
-                stats.attempt_count += 1
-                self._append_event(
-                    state=state,
-                    event_type="state_update",
-                    step_id=step_id,
-                    payload={"phase": "act_start", "step_key": step.key, "step_name": step.name, "attempt": attempt},
-                )
-
-                # 4.3 调用底层执行器并获取执行结果 (act & observe)
-                outcome = await self._act_executor(act_fn, state, step, idx, self.limits.step_timeout_ms)
-                summary, out_hash = self._summarize_output(outcome.output)
-                self._append_event(
-                    state=state,
-                    event_type="state_update",
-                    step_id=step_id,
-                    payload={
-                        "phase": "observe",
-                        "step_key": step.key,
-                        "step_name": step.name,
-                        "attempt": attempt,
-                        "status": outcome.status,
-                        "output_summary": summary,
-                        "output_hash": out_hash,
-                    },
-                )
-
-                # 4.4 根据结果进行反思判断 (reflect)
-                decision = await self._maybe_await(reflect_fn(state, step, idx, outcome))
-                self._append_event(
-                    state=state,
-                    event_type="state_update",
-                    step_id=step_id,
-                    payload={
-                        "phase": "reflect",
-                        "step_key": step.key,
-                        "step_name": step.name,
-                        "attempt": attempt,
-                        "decision": decision.action,
-                        "reason": decision.reason,
-                    },
-                )
-
-                # 5. 成功提交或失败处理
-                # 5.1 成功提交并落盘 update 事件
-                if outcome.status == "ok" and decision.action == "continue":
-                    stats.success_steps += 1
-                    self._append_event(
-                        state=state,
-                        event_type="state_update",
-                        step_id=step_id,
-                        payload={
-                            "phase": "update",
-                            "step_key": step.key,
-                            "step_name": step.name,
-                            "attempt": attempt,
-                            "output_summary": summary,
-                            "output_hash": out_hash,
-                        },
-                    )
-                    completed_step_keys.add(step.key)
-                    break
-
-                # 5.2 触发重试逻辑
-                if decision.action == "retry" and attempt < self.limits.max_retry_per_step:
-                    attempt += 1
-                    stats.reflected_retry_count += 1
-                    continue
-
-                # 5.3 不可恢复的失败，终止当前步骤
-                stats.failed_steps += 1
-                stats.stop_reason = "step_failed"
-                self._append_event(
-                    state=state,
-                    event_type="error",
-                    step_id=step_id,
-                    payload={
-                        "step_key": step.key,
-                        "step_name": step.name,
-                        "attempt": attempt,
-                        "output_summary": summary,
-                        "output_hash": out_hash,
-                    },
-                    error=outcome.error
-                    or ErrorInfo(error_code="STEP_FAILED", error_message="步骤执行失败", retryable=False),
-                )
-                break
-
-            
-            # 若由于时间预算超限或步骤崩溃而退出 attempt 循环，将直接跳出主计划循环
-            if stats.stop_reason in {"time_budget_exceeded", "step_failed"}:
-                break
-
-        # 6. finish 收尾：整合运行统计信息并产生 FinalAnswer
-        self._append_event(
-            state=state,
-            event_type="finish",
-            step_id="step_finish",
-            payload={
-                "context": context.model_dump(),
-                "total_planned_steps": stats.total_planned_steps,
-                "executed_steps": stats.executed_steps,
-                "success_steps": stats.success_steps,
-                "failed_steps": stats.failed_steps,
-                "reflected_retry_count": stats.reflected_retry_count,
-                "skipped_steps": stats.skipped_steps,
-                "attempt_count": stats.attempt_count,
-                "completed_step_keys": sorted(list(completed_step_keys)),
-                "stop_reason": stats.stop_reason,
-            },
-        )
-        state.final_answer = self._build_final_answer(stats, started_at)
-        return state
+        return pipeline_context.state
 
     def run(
         self,
@@ -624,8 +1393,18 @@ class EngineLoop:
     ) -> AgentState:
         """同步包装器。
 
-        注意：
-        - 如果调用方已有事件循环，请直接使用 `await arun(...)`。
+        Args:
+            state: 当前状态对象。
+            plan_fn: 计划函数。
+            act_fn: 执行函数。
+            reflect_fn: 反思函数。
+            context: 运行上下文。
+
+        Returns:
+            AgentState: 更新后的状态对象。
+
+        Raises:
+            RuntimeError: 当前线程已有事件循环时，要求调用方改用 `await arun(...)`。
         """
 
         try:
@@ -634,10 +1413,449 @@ class EngineLoop:
             return asyncio.run(self.arun(state, plan_fn, act_fn, reflect_fn, context))
         raise RuntimeError("检测到正在运行的事件循环，请改用 await arun(...)")
 
+    def _build_pipeline(self) -> list[EngineStage]:
+        """构建顶层阶段 pipeline。
+
+        Returns:
+            list[EngineStage]: 顶层阶段列表。
+        """
+
+        stages = [
+            EngineStage(name="plan", handler=self._stage_plan),
+            EngineStage(name="execute_steps", handler=self._stage_execute_steps),
+            EngineStage(name="finish", handler=self._stage_finish),
+        ]
+        if self._pipeline_customizer is not None:
+            stages = self._pipeline_customizer(stages)
+        return stages
+
+    def _build_attempt_pipeline(self) -> list[EngineStage]:
+        """构建单步尝试阶段 pipeline。
+
+        Returns:
+            list[EngineStage]: 单步尝试阶段列表。
+        """
+
+        stages = [
+            EngineStage(name="time_budget_guard", handler=self._attempt_time_budget_guard),
+            EngineStage(name="act_start", handler=self._attempt_act_start),
+            EngineStage(name="act", handler=self._attempt_act),
+            EngineStage(name="observe", handler=self._attempt_observe),
+            EngineStage(name="reflect", handler=self._attempt_reflect),
+            EngineStage(name="decide", handler=self._attempt_decide),
+        ]
+        if self._attempt_stage_customizer is not None:
+            stages = self._attempt_stage_customizer(stages)
+        return stages
+
+    async def _run_stage(self, stage: EngineStage, context: EnginePipelineContext) -> None:
+        """统一执行阶段。
+
+        Args:
+            stage: 当前阶段。
+            context: pipeline 共享上下文。
+
+        Returns:
+            None
+        """
+
+        result = stage.handler(context)
+        if inspect.isawaitable(result):
+            await result
+
+    async def _stage_plan(self, context: EnginePipelineContext) -> None:
+        """执行 plan 阶段。
+
+        Args:
+            context: pipeline 共享上下文。
+
+        Returns:
+            None
+        """
+
+        context.completed_step_keys = completed_step_keys(context.state)
+        raw_plan = normalize_execution_plan(context.plan_fn(context.state))
+        try:
+            plan = schedule_execution_plan(raw_plan, context.completed_step_keys)
+        except ValueError as exc:
+            context.stats.failed_steps += 1
+            context.request_stop("plan_invalid")
+            context.append_event(
+                event_type="error",
+                step_id="step_plan",
+                payload={"phase": "plan"},
+                error=ErrorInfo(
+                    error_code="PLAN_INVALID",
+                    error_message=str(exc),
+                    retryable=False,
+                ),
+            )
+            return
+        context.apply_plan(plan)
+        context.append_event(
+            event_type="plan",
+            step_id="step_plan",
+            payload={
+                "plan_id": plan.plan_id,
+                "plan_revision": plan.revision,
+                "plan_origin": plan.origin,
+                "plan_reason": plan.reason,
+                "global_task": plan.global_task,
+                "success_criteria": plan.success_criteria,
+                "constraints": plan.constraints,
+                "risk_level": plan.risk_level,
+                "plan_audit": plan.audit.model_dump(),
+                "plan_metadata": plan.metadata,
+                "plan_steps": [
+                    {
+                        "key": step.key,
+                        "name": step.name,
+                        "kind": step.kind,
+                        "depends_on": step.depends_on,
+                        "priority": step.priority,
+                    }
+                    for step in plan.steps
+                ],
+                "plan_count": len(plan.steps),
+                "context": context.run_context.model_dump(),
+            },
+        )
+
+    async def _stage_execute_steps(self, context: EnginePipelineContext) -> None:
+        """执行步骤阶段。
+
+        Args:
+            context: pipeline 共享上下文。
+
+        Returns:
+            None
+        """
+
+        step_index = 1
+        while step_index <= len(context.plan_steps):
+            step = context.plan_steps[step_index - 1]
+            context.prepare_step(step, step_index)
+
+            if step.key in context.completed_step_keys:
+                context.stats.skipped_steps += 1
+                context.append_event(
+                    event_type="state_update",
+                    step_id=context.current_step_id,
+                    payload={
+                        "phase": "resume_skip",
+                        "step_key": step.key,
+                        "step_name": step.name,
+                        "attempt": 0,
+                    },
+                )
+                step_index += 1
+                continue
+
+            context.stats.executed_steps += 1
+            if context.stats.executed_steps > self.limits.max_steps:
+                context.request_stop("max_steps_reached")
+                context.append_event(
+                    event_type="error",
+                    step_id=context.current_step_id,
+                    payload={"step_key": step.key, "step_name": step.name, "attempt": 0},
+                    error=ErrorInfo(
+                        error_code="MAX_STEPS_REACHED",
+                        error_message="Engine 达到最大执行步数限制",
+                        retryable=False,
+                    ),
+                )
+                break
+
+            attempt = 0
+            while True:
+                context.prepare_attempt(attempt)
+                for stage in self._build_attempt_pipeline():
+                    await self._run_stage(stage, context)
+                    if (
+                        context.stop_requested
+                        or context.retry_requested
+                        or context.replan_requested
+                        or context.step_completed
+                        or context.step_terminal
+                    ):
+                        break
+
+                if context.step_completed:
+                    break
+
+                if context.retry_requested:
+                    attempt += 1
+                    context.stats.reflected_retry_count += 1
+                    continue
+
+                if context.replan_requested:
+                    break
+
+                break
+
+            if context.stop_requested:
+                break
+
+            if context.replan_requested:
+                context.replan_requested = False
+                continue
+
+            step_index += 1
+
+    async def _stage_finish(self, context: EnginePipelineContext) -> None:
+        """执行 finish 阶段。
+
+        Args:
+            context: pipeline 共享上下文。
+
+        Returns:
+            None
+        """
+
+        context.append_event(
+            event_type="finish",
+            step_id="step_finish",
+            payload={
+                "context": context.run_context.model_dump(),
+                "total_planned_steps": context.stats.total_planned_steps,
+                "executed_steps": context.stats.executed_steps,
+                "success_steps": context.stats.success_steps,
+                "failed_steps": context.stats.failed_steps,
+                "reflected_retry_count": context.stats.reflected_retry_count,
+                "replan_count": context.stats.replan_count,
+                "skipped_steps": context.stats.skipped_steps,
+                "attempt_count": context.stats.attempt_count,
+                "completed_step_keys": sorted(list(context.completed_step_keys)),
+                "stop_reason": context.stats.stop_reason,
+                "plan_id": context.current_plan.plan_id if context.current_plan is not None else "",
+                "plan_revision": context.current_plan.revision if context.current_plan is not None else 0,
+                "plan_origin": context.current_plan.origin if context.current_plan is not None else "",
+                "global_task": context.current_plan.global_task if context.current_plan is not None else "",
+                "success_criteria": context.current_plan.success_criteria if context.current_plan is not None else [],
+                "constraints": context.current_plan.constraints if context.current_plan is not None else [],
+                "risk_level": context.current_plan.risk_level if context.current_plan is not None else "",
+                "plan_audit": context.current_plan.audit.model_dump() if context.current_plan is not None else {},
+            },
+        )
+        context.state.final_answer = build_final_answer(
+            context.stats,
+            context.started_at_ms,
+            self._now_ms(),
+        )
+        context.finish_emitted = True
+
+    async def _attempt_time_budget_guard(self, context: EnginePipelineContext) -> None:
+        """执行 run 级时间预算检查。
+
+        Args:
+            context: pipeline 共享上下文。
+
+        Returns:
+            None
+        """
+
+        if not exceed_time_budget(context.started_at_ms, self.limits.time_budget_ms, self._now_ms()):
+            return
+
+        context.request_stop("time_budget_exceeded")
+        context.step_terminal = True
+        context.append_event(
+            event_type="error",
+            step_id=context.current_step_id,
+            payload={
+                "step_key": context.current_step_key(),
+                "step_name": context.current_step_name(),
+                "attempt": context.current_attempt,
+            },
+            error=ErrorInfo(
+                error_code="TIME_BUDGET_EXCEEDED",
+                error_message="Engine 超出时间预算",
+                retryable=False,
+            ),
+        )
+
+    async def _attempt_act_start(self, context: EnginePipelineContext) -> None:
+        """记录 act_start 阶段。
+
+        Args:
+            context: pipeline 共享上下文。
+
+        Returns:
+            None
+        """
+
+        context.stats.attempt_count += 1
+        context.append_event(
+            event_type="state_update",
+            step_id=context.current_step_id,
+            payload={
+                "phase": "act_start",
+                "step_key": context.current_step_key(),
+                "step_name": context.current_step_name(),
+                "attempt": context.current_attempt,
+            },
+        )
+
+    async def _attempt_act(self, context: EnginePipelineContext) -> None:
+        """执行 act 阶段。
+
+        Args:
+            context: pipeline 共享上下文。
+
+        Returns:
+            None
+        """
+
+        if context.current_step is None:
+            return
+        context.current_outcome = await self._act_executor(
+            context.act_fn,
+            context.state,
+            context.current_step,
+            context.current_step_index,
+            context.current_step.timeout_ms or self.limits.step_timeout_ms,
+        )
+
+    async def _attempt_observe(self, context: EnginePipelineContext) -> None:
+        """执行 observe 阶段。
+
+        Args:
+            context: pipeline 共享上下文。
+
+        Returns:
+            None
+        """
+
+        if context.current_step is None or context.current_outcome is None:
+            return
+
+        summary, output_hash = summarize_output(context.current_outcome.output, self.limits)
+        context.current_output_summary = summary
+        context.current_output_hash = output_hash
+        context.append_event(
+            event_type="state_update",
+            step_id=context.current_step_id,
+            payload={
+                "phase": "observe",
+                "step_key": context.current_step.key,
+                "step_name": context.current_step.name,
+                "attempt": context.current_attempt,
+                "status": context.current_outcome.status,
+                "output_summary": summary,
+                "output_hash": output_hash,
+            },
+        )
+
+    async def _attempt_reflect(self, context: EnginePipelineContext) -> None:
+        """执行 reflect 阶段。
+
+        Args:
+            context: pipeline 共享上下文。
+
+        Returns:
+            None
+        """
+
+        if context.current_step is None or context.current_outcome is None:
+            return
+
+        context.current_decision = await self._maybe_await(
+            context.reflect_fn(context.state, context.current_step, context.current_step_index, context.current_outcome)
+        )
+        context.append_event(
+            event_type="state_update",
+            step_id=context.current_step_id,
+            payload={
+                "phase": "reflect",
+                "step_key": context.current_step.key,
+                "step_name": context.current_step.name,
+                "attempt": context.current_attempt,
+                "decision": context.current_decision.action,
+                "reason": context.current_decision.reason,
+            },
+        )
+
+    async def _attempt_decide(self, context: EnginePipelineContext) -> None:
+        """执行 decide 阶段。
+
+        Args:
+            context: pipeline 共享上下文。
+
+        Returns:
+            None
+        """
+
+        if context.current_step is None or context.current_outcome is None or context.current_decision is None:
+            return
+
+        if context.current_outcome.status == "ok" and context.current_decision.action == "continue":
+            context.stats.success_steps += 1
+            context.append_event(
+                event_type="state_update",
+                step_id=context.current_step_id,
+                payload={
+                    "phase": "update",
+                    "step_key": context.current_step.key,
+                    "step_name": context.current_step.name,
+                    "attempt": context.current_attempt,
+                    "output_summary": context.current_output_summary,
+                    "output_hash": context.current_output_hash,
+                },
+            )
+            context.completed_step_keys.add(context.current_step.key)
+            context.step_completed = True
+            return
+
+        max_retry = (
+            context.current_step.max_retry_per_step
+            if context.current_step is not None and context.current_step.max_retry_per_step is not None
+            else self.limits.max_retry_per_step
+        )
+        if context.current_decision.action == "retry" and context.current_attempt < max_retry:
+            context.retry_requested = True
+            return
+
+        if context.current_decision.action == "replan":
+            await self._apply_replan(context)
+            return
+
+        context.stats.failed_steps += 1
+        context.request_stop("step_failed")
+        context.step_terminal = True
+        context.append_event(
+            event_type="error",
+            step_id=context.current_step_id,
+            payload={
+                "step_key": context.current_step.key,
+                "step_name": context.current_step.name,
+                "attempt": context.current_attempt,
+                "output_summary": context.current_output_summary,
+                "output_hash": context.current_output_hash,
+            },
+            error=context.current_outcome.error
+            or ErrorInfo(error_code="STEP_FAILED", error_message="步骤执行失败", retryable=False),
+        )
+
     async def _default_act_executor(
-        self, act_fn: ActFn, state: AgentState, step: PlanStep, idx: int, timeout_ms: int
+        self,
+        act_fn: ActFn,
+        state: AgentState,
+        step: PlanStep,
+        idx: int,
+        timeout_ms: int,
     ) -> StepOutcome:
-        """默认 act 执行器（共享线程池 + 背压 + asyncio 超时）。"""
+        """默认 act 执行器。
+
+        Args:
+            act_fn: 执行函数。
+            state: 当前状态对象。
+            step: 当前步骤。
+            idx: 步骤序号。
+            timeout_ms: 单步超时。
+
+        Returns:
+            StepOutcome: 标准化执行结果。
+        """
 
         timeout_sec = max(0.001, timeout_ms / 1000.0)
         try:
@@ -652,6 +1870,7 @@ class EngineLoop:
                     retryable=True,
                 ),
             )
+
         try:
             try:
                 if inspect.iscoroutinefunction(act_fn):
@@ -686,7 +1905,14 @@ class EngineLoop:
 
     @staticmethod
     async def _maybe_await(value: ReflectDecision | Awaitable[ReflectDecision]) -> ReflectDecision:
-        """兼容同步/异步反思函数。"""
+        """兼容同步/异步反思函数。
+
+        Args:
+            value: 反思结果或 awaitable。
+
+        Returns:
+            ReflectDecision: 已解析的决策对象。
+        """
 
         if inspect.isawaitable(value):
             return await value
@@ -694,7 +1920,17 @@ class EngineLoop:
 
     @staticmethod
     def _default_reflect(_: AgentState, __: PlanStep, ___: int, outcome: StepOutcome) -> ReflectDecision:
-        """默认反思策略：成功继续，失败按 retryable 决策。"""
+        """默认反思策略。
+
+        Args:
+            _: 当前状态对象。
+            __: 当前步骤。
+            ___: 步骤序号。
+            outcome: 当前执行结果。
+
+        Returns:
+            ReflectDecision: 标准化决策对象。
+        """
 
         if outcome.status == "ok":
             return ReflectDecision(action="continue", reason="步骤执行成功")
@@ -702,247 +1938,272 @@ class EngineLoop:
             return ReflectDecision(action="retry", reason="错误可重试")
         return ReflectDecision(action="abort", reason="错误不可重试")
 
+    async def _apply_replan(self, context: EnginePipelineContext) -> None:
+        """执行重规划。
+
+        Args:
+            context: pipeline 共享上下文。
+
+        Returns:
+            None
+        """
+
+        if context.current_decision is None or context.current_step is None:
+            return
+
+        if context.stats.replan_count >= self.limits.max_replans:
+            context.stats.failed_steps += 1
+            context.request_stop("replan_limit_reached")
+            context.step_terminal = True
+            context.append_event(
+                event_type="error",
+                step_id=context.current_step_id,
+                payload={
+                    "step_key": context.current_step.key,
+                    "step_name": context.current_step.name,
+                    "attempt": context.current_attempt,
+                },
+                error=ErrorInfo(
+                    error_code="REPLAN_LIMIT_REACHED",
+                    error_message="重规划次数达到上限",
+                    retryable=False,
+                ),
+            )
+            return
+
+        replacement = context.current_decision.replacement_plan
+        if replacement is None:
+            context.stats.failed_steps += 1
+            context.request_stop("replan_missing_plan")
+            context.step_terminal = True
+            context.append_event(
+                event_type="error",
+                step_id=context.current_step_id,
+                payload={
+                    "step_key": context.current_step.key,
+                    "step_name": context.current_step.name,
+                    "attempt": context.current_attempt,
+                },
+                error=ErrorInfo(
+                    error_code="REPLAN_PLAN_MISSING",
+                    error_message="reflect 请求重规划，但未提供 replacement_plan",
+                    retryable=False,
+                ),
+            )
+            return
+
+        replanned = build_replanned_plan(
+            current_plan=context.current_plan,
+            replacement_plan=replacement,
+            reason=context.current_decision.reason,
+            trigger_step=context.current_step,
+        )
+        try:
+            scheduled_replanned = schedule_execution_plan(replanned, context.completed_step_keys)
+        except ValueError as exc:
+            context.stats.failed_steps += 1
+            context.request_stop("replan_invalid")
+            context.step_terminal = True
+            context.append_event(
+                event_type="error",
+                step_id=context.current_step_id,
+                payload={
+                    "step_key": context.current_step.key,
+                    "step_name": context.current_step.name,
+                    "attempt": context.current_attempt,
+                },
+                error=ErrorInfo(
+                    error_code="REPLAN_INVALID",
+                    error_message=str(exc),
+                    retryable=False,
+                ),
+            )
+            return
+        prefix = context.plan_steps[: context.current_step_index - 1]
+        old_remaining = context.plan_steps[context.current_step_index :]
+        if context.current_decision.plan_update_mode == "append_remaining":
+            next_steps = prefix + old_remaining + scheduled_replanned.steps
+        else:
+            next_steps = prefix + scheduled_replanned.steps
+
+        context.current_plan = scheduled_replanned
+        context.replace_plan_steps(next_steps)
+        context.stats.replan_count += 1
+        context.replan_requested = True
+        context.append_event(
+            event_type="plan",
+            step_id=f"{context.current_step_id}_replan",
+            payload={
+                "phase": "replan",
+                "trigger_step_key": context.current_step.key,
+                "trigger_step_name": context.current_step.name,
+                "plan_id": context.current_plan.plan_id,
+                "plan_revision": context.current_plan.revision,
+                "plan_origin": context.current_plan.origin,
+                "plan_reason": context.current_plan.reason,
+                "global_task": context.current_plan.global_task,
+                "success_criteria": context.current_plan.success_criteria,
+                "constraints": context.current_plan.constraints,
+                "risk_level": context.current_plan.risk_level,
+                "plan_audit": context.current_plan.audit.model_dump(),
+                "plan_count": len(context.current_plan.steps),
+                "plan_steps": [
+                    {
+                        "key": step.key,
+                        "name": step.name,
+                        "kind": step.kind,
+                        "depends_on": step.depends_on,
+                        "priority": step.priority,
+                    }
+                    for step in context.current_plan.steps
+                ],
+            },
+        )
+
     def _append_event(
         self,
         state: AgentState,
         event_type: Literal["plan", "tool_call", "tool_result", "state_update", "finish", "error"],
         step_id: str,
-        payload: dict[str, Any],
+        payload: dict[str, object],
         error: ErrorInfo | None = None,
     ) -> None:
-        """统一写事件，确保 trace 结构一致。"""
+        """统一写事件。
 
-        state.events.append(
-            ExecutionEvent(
-                trace_id=state.trace_id,
-                run_id=state.run_id,
-                step_id=step_id,
-                event_type=event_type,
-                payload=payload,
-                error=error,
-            )
+        Args:
+            state: 当前状态对象。
+            event_type: 事件类型。
+            step_id: 步骤 ID。
+            payload: 事件载荷。
+            error: 错误对象。
+
+        Returns:
+            None
+        """
+
+        event = ExecutionEvent(
+            trace_id=state.trace_id,
+            run_id=state.run_id,
+            step_id=step_id,
+            event_type=event_type,
+            payload=payload,
+            error=error,
         )
-
-    def _build_final_answer(self, stats: _RunStats, started_at: int) -> FinalAnswer:
-        """构造通用最终输出。"""
-
-        status: Literal["success", "partial", "failed"] = "success"
-        if stats.failed_steps > 0:
-            status = "failed"
-        elif stats.stop_reason != "finished":
-            status = "partial"
-
-        elapsed_ms = max(1, self._now_ms() - started_at)
-        steps_per_second = round((stats.executed_steps / elapsed_ms) * 1000, 3)
-
-        return FinalAnswer(
-            status=status,
-            summary=f"Engine 执行结束：{stats.stop_reason}",
-            output={
-                "total_planned_steps": stats.total_planned_steps,
-                "executed_steps": stats.executed_steps,
-                "success_steps": stats.success_steps,
-                "failed_steps": stats.failed_steps,
-                "reflected_retry_count": stats.reflected_retry_count,
-                "skipped_steps": stats.skipped_steps,
-                "attempt_count": stats.attempt_count,
-                "stop_reason": stats.stop_reason,
-                "elapsed_ms": elapsed_ms,
-                "steps_per_second": steps_per_second,
-            },
-            artifacts=[{"type": "engine_stats", "name": "loop_result"}],
-            references=[],
-        )
-
-    def _completed_step_keys(self, state: AgentState) -> set[str]:
-        """提取历史已完成步骤键（优先读 finish 索引）。"""
-
-        for event in reversed(state.events):
-            if event.event_type != "finish":
-                continue
-            keys = event.payload.get("completed_step_keys")
-            if isinstance(keys, list):
-                parsed = {k for k in keys if isinstance(k, str) and k}
-                if parsed:
-                    return parsed
-
-        completed: set[str] = set()
-        for event in state.events:
-            if event.event_type != "state_update":
-                continue
-            if event.payload.get("phase") != "update":
-                continue
-            step_key = event.payload.get("step_key")
-            if isinstance(step_key, str) and step_key:
-                completed.add(step_key)
-        return completed
-
-    def _exceed_time_budget(self, started_at: int) -> bool:
-        """检查 run 级时间预算。"""
-
-        return (self._now_ms() - started_at) > self.limits.time_budget_ms
-
-    def _summarize_output(self, output: dict[str, Any]) -> tuple[str, str]:
-        """对步骤输出做摘要，控制 trace 体积。"""
-
-        raw = json.dumps(output, ensure_ascii=False, sort_keys=True)
-        out_hash = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
-        preview = raw[: self.limits.trace_output_preview_chars]
-        summary = f"len={len(raw)},preview={preview}"
-        return summary, out_hash
-
-    @staticmethod
-    def _normalize_plan_steps(raw_steps: list[str | dict[str, Any] | PlanStep]) -> list[PlanStep]:
-        """标准化 plan 步骤。"""
-
-        normalized: list[PlanStep] = []
-        for item in raw_steps:
-            if isinstance(item, PlanStep):
-                normalized.append(item)
-                continue
-            if isinstance(item, str):
-                key = EngineLoop._stable_hash({"name": item})
-                normalized.append(PlanStep(key=key, name=item, payload={}))
-                continue
-            step_id = item.get("id") if isinstance(item.get("id"), str) else ""
-            step_name = item.get("name") if isinstance(item.get("name"), str) else "unnamed_step"
-            payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
-            if not step_id:
-                step_id = EngineLoop._stable_hash({"name": step_name, "payload": payload})
-            normalized.append(PlanStep(key=step_id, name=step_name, payload=payload))
-        return normalized
-
-    @staticmethod
-    def _stable_hash(value: dict[str, Any]) -> str:
-        """生成稳定哈希，用于步骤键。"""
-
-        raw = json.dumps(value, sort_keys=True, ensure_ascii=False)
-        return f"step_{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:12]}"
-
+        state.events.append(event)
+        if self._event_listener is not None:
+            try:
+                self._event_listener(event)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("engine event listener failed: %s", exc)
 ```
 
-#### 代码讲解（核心设计）
+### 代码讲解
 
-1. 为什么是 `arun()` + `run()` 双入口：  
-`arun()` 是主语义，`run()` 只是兼容同步调用的包装器。这样既不牺牲异步吞吐，也不逼现有系统一次性改造为 async。  
-替代方案是只保留同步接口，但会让每个 `act` 阻塞主线程，吞吐和尾延迟都会恶化。
-2. 为什么引入 `PlanStep.key` 而不是只用 `step_{idx}`：  
-恢复执行时，计划可能重排或插入新步骤。索引会漂移，稳定 key 才能正确识别“这个步骤我做过没有”。  
-失败模式是重复副作用：例如同一外部 API 被重复调用。
-3. 为什么 `max_steps` 统计 `executed_steps`：  
-`resume_skip` 只是跳过历史已完成步骤，不代表本轮新执行。把 skip 计入预算会让恢复运行被错误截断。
-4. 为什么 run 级 `time_budget` 要在重试循环中检查：  
-如果只在 step 开始前检查，某个步骤重试多次会悄悄超预算。循环内检查可把超时变成确定行为，而不是偶然行为。
-5. 为什么 `act_executor` 采用可注入接口：  
-Engine 只定义“执行协议”，不绑定“执行介质”。同一套 Engine 可以接线程池、进程池、远程沙箱。  
-这就是通用框架的扩展性核心，不然每换一个运行时都要改 Engine 核心代码。
-6. 为什么默认执行器是“共享线程池 + 信号量背压”：  
-共享线程池避免频繁创建/销毁线程；信号量把并发上限变成显式约束，防止流量峰值把下游打挂。  
-失败语义由 `ACT_BACKPRESSURE` 显式返回，便于监控与限流策略联动。
-7. 为什么 trace 用 `output_summary + output_hash`：  
-生产环境下把大输出直接塞进事件会快速放大存储成本与传输成本。摘要+哈希保留排障能力，同时控制体积。
-8. 为什么 `_completed_step_keys` 优先读 `finish` 索引：  
-扫描全量历史事件是 O(E)，事件一多就拖慢恢复启动。优先读 finish 索引是低成本优化，且不破坏正确性。
-9. 错误码设计的工程价值：  
-`STEP_TIMEOUT`、`ACT_BACKPRESSURE`、`MAX_STEPS_REACHED`、`TIME_BUDGET_EXCEEDED` 不是“给人看”的字符串，而是给评测和告警系统做聚合统计的结构化信号。
+`loop.py` 现在要按“主流程时间线”来理解，而不是按函数从上往下死读。
 
-#### 失败链路推演（你在评审时应该重点看）
+1. `EngineLoop` 是 facade，不是上帝类。它组装上下文、构建 pipeline、统一驱动阶段执行。
+2. 顶层 pipeline 处理 run 级主线：`plan -> execute_steps -> finish`。
+3. attempt pipeline 处理单步尝试：`time_budget_guard -> act_start -> act -> observe -> reflect -> decide`。
+4. `_stage_plan()` 做的是“计划收口”，不是“列步骤”。它会标准化、调度、校验并落计划事件。
+5. `_stage_execute_steps()` 必须用 `while`，因为 `replan` 会改变剩余队列。
+6. `_attempt_decide()` 是真正的决策闸门，负责 `continue / retry / replan / abort`。
+7. `_apply_replan()` 现在是正式计划修订，不是临时补丁。
+8. `_default_act_executor()` 负责并发背压、同步/异步兼容、超时和异常标准化。
 
-1. 慢工具场景：`act` 超时 -> `STEP_TIMEOUT` -> reflect 评估是否重试 -> 超过重试上限后 `step_failed` -> `finish`。  
-2. 高并发场景：获取信号量超时 -> `ACT_BACKPRESSURE` -> 可重试但仍受 run 级预算约束。  
-3. 恢复场景：已有 `completed_step_keys` -> 命中 `resume_skip` -> 不重复执行副作用步骤。  
+成功链路例子：
 
-#### 主流程逐步拆解（从一次真实 run 的时间线理解）
+1. `act` 返回 `ok`
+2. `reflect` 给出 `continue`
+3. `decide` 写 `update`
+4. 最终 `finish` 输出 `success`
 
-下面用“时间线视角”解释 `arun()` 内部发生了什么，你在排障时就知道该看哪一段事件。
+失败链路例子：
 
-1. 初始化阶段  
-`context`、`stats`、`plan_steps`、`completed_step_keys` 在开头就准备好。  
-设计动机：把“输入标准化”和“运行统计初始化”前置，避免循环体里出现多处隐式初始化。
-2. `plan` 事件落盘  
-在真正执行前先写 `plan` 事件（包含步骤列表和上下文版本）。  
-设计动机：即便后续第一个步骤就失败，也能在 trace 里复原“本来打算做什么”。
-3. 遍历步骤  
-每一步先判定是否 `resume_skip`，再判定 `max_steps`，最后进入执行尝试。  
-设计动机：先做便宜且确定的判断（跳过/预算）再做昂贵操作（执行器调用）。
-4. 单步执行尝试（attempt 循环）  
-每次 attempt 都按顺序写：`act_start -> observe -> reflect`。  
-设计动机：把同一次尝试的生命周期完整记录，便于定位“到底卡在 act、observe 还是 reflect”。
-5. 成功提交与失败终止  
-只有 `outcome=ok 且 decision=continue` 才会进入 `update`（真正提交）。  
-设计动机：`update` 是提交点（commit point），恢复逻辑只认提交过的步骤。
-6. `finish` 收尾  
-无论成功、部分成功、失败，都会统一写 `finish` 事件和 `FinalAnswer`。  
-设计动机：上层系统总能拿到结构化终态，不需要猜这次运行是否“异常退出”。
+1. `act` 超时
+2. 结果转成 `STEP_TIMEOUT`
+3. `reflect` 不再继续
+4. `decide` 写标准错误事件
+5. `finish` 输出 `failed`
 
-#### 关键函数逐块解剖（点到行为，不只点到概念）
+这就是生产导向和 demo 写法最大的区别：失败不是糊掉，而是被系统收口成可解释状态。
 
-1. `_normalize_plan_steps()`  
-做了什么：把 `str | dict | PlanStep` 三种输入统一成 `PlanStep`。  
-为什么：允许上层快速接入（字符串最省事）与严格接入（显式 id）并存。  
-工程建议：生产场景尽量显式传 `id`，避免 fallback hash 受 payload 波动影响。
-2. `_completed_step_keys()`  
-做了什么：优先从 `finish.payload.completed_step_keys` 读取索引；没有时回扫 `state_update(update)`。  
-为什么：兼顾性能（优先 O(1)）与兼容性（老数据仍可回扫）。  
-失败模式：如果你把“成功”事件写成别的 phase，恢复将无法正确跳过。
-3. `_default_act_executor()`  
-做了什么：背压获取信号量 -> 区分异步/同步执行 -> `wait_for` 超时 -> 标准错误码返回。  
-为什么：把执行器语义集中在一个地方，避免主循环充满执行细节分支。  
-边界：线程超时无法硬中断底层阻塞调用，这是当前版本已知限制。
-4. `_append_event()`  
-做了什么：统一事件构造入口。  
-为什么：防止不同代码路径写出不同格式 payload，破坏后续评测与观测聚合。  
-经验：事件写入分散是大规模系统最常见的“可观测性腐化”根源。
-5. `_build_final_answer()`  
-做了什么：把内部统计映射成外部稳定输出。  
-为什么：UI/API 不应依赖内部 `_RunStats`，而应依赖稳定契约 `FinalAnswer`。  
-优点：后续你可以升级内部统计字段而不影响上层调用。
+### 名词对位讲解：loop.py 里最容易混的 6 个词
 
-#### 状态机视角（把 Engine 看成可验证状态机）
+1. `pipeline`：整轮 run 的阶段序列。它关心的是“这轮任务的大阶段怎么走”。
+2. `attempt pipeline`：单个步骤的一次尝试序列。它关心的是“这一步这一次尝试怎么走”。
+3. `stage`：一个可插拔阶段节点，比如 `plan`、`execute_steps`、`finish`。
+4. `facade`：对外暴露的稳定入口。`EngineLoop` 就是 facade，外部只看它，不关心内部怎么拆。
+5. `replan_requested`：这不是“已经完成重规划”，而是“当前 attempt 决定跳回更高层继续按新计划跑”。
+6. `step_completed`：这不是“act 成功返回”，而是“这一步已经走完 update，可以被视为真正完成”。
 
-你可以把每一步看成一个小状态机：
+### 顺着时间线再看一次 loop.py
 
-1. `Ready`：步骤已选中但未执行。  
-2. `Running`：执行器正在跑 `act`。  
-3. `Observed`：拿到执行结果并摘要化。  
-4. `Reflected`：反思决策已得出。  
-5. `Committed`：`update` 事件写入（表示该步骤成功提交）。  
-6. `Failed`：错误事件写入并结束该步骤。  
+如果你读 `loop.py` 还是觉得长，建议按这条时间线看，而不是按代码文件顺序硬啃：
 
-为什么这个视角有用：  
-当线上出现“步骤执行了但没生效”的问题时，你可以直接查是否缺少 `Committed(update)`，不用猜业务代码哪里丢了状态。
+1. `arun()`：创建 `EnginePipelineContext`
+2. `_build_pipeline()`：决定顶层 run 阶段
+3. `_stage_plan()`：拿到并收口正式计划
+4. `_stage_execute_steps()`：逐步跑计划队列
+5. `_build_attempt_pipeline()`：给每一步搭好尝试链路
+6. `_attempt_decide()`：决定这一步的命运
+7. `_apply_replan()`：必要时修订剩余计划
+8. `_stage_finish()`：统一收尾
 
-#### 预算语义深挖（最容易写错的地方）
+只要你把这 8 个点串起来，`loop.py` 就不再是一大团逻辑，而是一条很明确的时间线。
 
-1. `max_steps` 控制的是“新执行步骤数”，不是“计划总步数”。  
-错法：把 skip 也算进去，恢复时会被误判超步数。  
-2. `time_budget_ms` 是 run 级预算，必须在 attempt 循环内检查。  
-错法：只在 step 开头检查，重试后可能超预算失控。  
-3. `step_timeout_ms` 是单次执行上限。  
-错法：把它当成 run 上限，导致多步场景误判超时。
+### 成功链路再压一遍：为什么 update 是真正提交点
 
-#### 并发与性能语义（为什么这版能走向生产）
+最容易误判的一点是：  
+很多人会把“`act` 返回 `ok`”当成步骤已经完成。
 
-1. 共享线程池而不是每次创建  
-优势：减少线程创建销毁开销，降低 P95 抖动。  
-2. 信号量背压  
-优势：拥塞时快速失败（`ACT_BACKPRESSURE`），保护下游依赖。  
-3. 输出摘要化  
-优势：控制 trace 体积，避免日志链路成为瓶颈。  
-4. attempt 计数  
-优势：可直接衡量“问题是执行失败还是重试过多”，为后续评测提供输入。
+在这套 Engine 里，不是。
 
+真正的提交点是：
 
+1. `act` 有结果
+2. `observe` 已经产出摘要
+3. `reflect` 明确给出 `continue`
+4. `decide` 写出 `update`
 
-### 第 4 步：写完整测试
+只有到这一步，`completed_step_keys` 才会加入当前步骤键。  
+这也是为什么恢复逻辑能工作，因为它跳过的是“已经提交成功”的步骤，而不是“曾经执行过一次”的步骤。
 
-创建命令：
+### 失败链路再压一遍：Engine 怎么把失败收口成系统语义
 
-```bash
-touch tests/unit/test_engine.py
-```
+拿 `STEP_TIMEOUT` 为例：
 
-```powershell
+1. `_default_act_executor()` 捕获超时
+2. 返回 `StepOutcome(status="error", error=...)`
+3. `observe` 仍然照常落摘要
+4. `reflect` 决定是 `retry` 还是 `abort`
+5. `decide` 再把它转成标准错误事件和 `stop_reason`
+
+这条链路说明：
+
+Engine 并不是“执行器一出错就炸掉”，而是“执行器出错后，Engine 仍然掌握解释权”。
+
+### 为什么不把 top-level pipeline 和 attempt pipeline 合并成一层
+
+合并当然可以写，但后果很差：
+
+1. 每一步 attempt 的逻辑会污染整轮 run 的主流程
+2. 你很难在“某一步的一次尝试”上插观察点
+3. `replan`、`retry`、`resume_skip` 这些动作会更难拆清楚
+
+现在双层 pipeline 的价值就在这里：
+
+1. run 级逻辑独立
+2. attempt 级逻辑独立
+3. 阶段扩展点也跟着变清楚
+
+这就是为什么你会觉得当前 Engine 比之前那版灵活很多，但复杂度又没炸。
+
+---
+
+## 第 7 步：补齐测试，把这套 Engine 变成真正可回归的骨架
+
+```codex
+New-Item -ItemType Directory -Force "tests\\unit" | Out-Null
 New-Item -ItemType File -Force "tests\\unit\\test_engine.py" | Out-Null
 ```
 
@@ -954,10 +2215,21 @@ New-Item -ItemType File -Force "tests\\unit\\test_engine.py" | Out-Null
 from __future__ import annotations
 
 import asyncio
-import time
 
-from agent_forge.components.engine import EngineLimits, EngineLoop, PlanStep, ReflectDecision, RunContext, StepOutcome
+from agent_forge.components.engine import (
+    EngineLimits,
+    ExecutionPlan,
+    EngineLoop,
+    EnginePipelineContext,
+    EngineStage,
+    PlanAudit,
+    PlanStep,
+    ReflectDecision,
+    RunContext,
+    StepOutcome,
+)
 from agent_forge.components.protocol import AgentState, ErrorInfo, ExecutionEvent, build_initial_state
+
 
 def test_engine_run_success_flow() -> None:
     """正常流程应输出 success 并产出 finish 事件。"""
@@ -977,6 +2249,7 @@ def test_engine_run_success_flow() -> None:
     assert updated.final_answer.output["success_steps"] == 2
     assert updated.final_answer.output["attempt_count"] == 2
     assert updated.events[-1].event_type == "finish"
+
 
 def test_engine_reflect_retry_once_then_success() -> None:
     """可重试错误应触发 reflect 重试并最终成功。"""
@@ -1008,6 +2281,7 @@ def test_engine_reflect_retry_once_then_success() -> None:
     assert updated.final_answer.status == "success"
     assert updated.final_answer.output["reflected_retry_count"] == 1
     assert updated.final_answer.output["attempt_count"] == 2
+
 
 def test_engine_resume_uses_stable_step_key_not_idx() -> None:
     """plan 重排后仍应根据 stable step key 跳过已完成步骤。"""
@@ -1043,6 +2317,7 @@ def test_engine_resume_uses_stable_step_key_not_idx() -> None:
     assert updated.final_answer is not None
     assert updated.final_answer.output["skipped_steps"] == 1
 
+
 def test_engine_max_steps_counts_executed_not_skipped() -> None:
     """max_steps 只统计实际执行步骤，不统计 resume_skip。"""
 
@@ -1070,6 +2345,7 @@ def test_engine_max_steps_counts_executed_not_skipped() -> None:
     assert updated.final_answer.output["executed_steps"] == 1
     assert updated.final_answer.output["skipped_steps"] == 1
 
+
 def test_engine_step_timeout_via_executor() -> None:
     """单步超时应转换为 STEP_TIMEOUT 错误。"""
 
@@ -1089,6 +2365,7 @@ def test_engine_step_timeout_via_executor() -> None:
     assert updated.final_answer is not None
     assert updated.final_answer.status == "failed"
     assert any(e.error and e.error.error_code == "STEP_TIMEOUT" for e in updated.events if e.event_type == "error")
+
 
 def test_engine_context_fields_recorded_in_events() -> None:
     """隔离上下文与版本信息应写入 plan/finish 事件。"""
@@ -1119,6 +2396,7 @@ def test_engine_context_fields_recorded_in_events() -> None:
         for e in updated.events
     )
 
+
 def test_engine_backpressure_error_when_inflight_exceeded() -> None:
     """并发门达到上限时应返回 ACT_BACKPRESSURE。"""
 
@@ -1145,86 +2423,556 @@ def test_engine_backpressure_error_when_inflight_exceeded() -> None:
     assert updated.final_answer.status == "failed"
     assert any(e.error and e.error.error_code == "ACT_BACKPRESSURE" for e in updated.events if e.event_type == "error")
 
+
+def test_engine_should_not_fail_when_event_listener_raises() -> None:
+    """监听器异常不应影响主流程完成。"""
+
+    def listener(_: ExecutionEvent) -> None:
+        raise RuntimeError("listener boom")
+
+    engine = EngineLoop(
+        limits=EngineLimits(max_steps=1, time_budget_ms=5000),
+        event_listener=listener,
+    )
+    state = build_initial_state("session_engine_listener")
+
+    def plan_fn(_: AgentState) -> list[dict]:
+        return [{"id": "s-a", "name": "step-a"}]
+
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+        return StepOutcome(status="ok", output={"step": step.name, "idx": step_idx})
+
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn))
+    assert updated.final_answer is not None
+    assert updated.final_answer.status == "success"
+
+
+def test_engine_should_allow_pipeline_stage_to_expand_plan() -> None:
+    """顶层 pipeline 应允许插入新阶段并修改计划步骤。"""
+
+    def pipeline_customizer(stages: list[EngineStage]) -> list[EngineStage]:
+        async def expand_plan(context: EnginePipelineContext) -> None:
+            context.append_plan_steps([PlanStep(key="s-b", name="step-b", payload={})])
+            assert context.current_plan is not None
+            assert [step.name for step in context.current_plan.steps] == ["step-a", "step-b"]
+            context.append_event(
+                event_type="state_update",
+                step_id="step_plan_extend",
+                payload={"phase": "plan_expand", "added_step": "step-b"},
+            )
+
+        return [stages[0], EngineStage(name="expand_plan", handler=expand_plan), *stages[1:]]
+
+    engine = EngineLoop(
+        limits=EngineLimits(max_steps=4, time_budget_ms=5000),
+        pipeline_customizer=pipeline_customizer,
+    )
+    state = build_initial_state("session_engine_pipeline_extension")
+    called_steps: list[str] = []
+
+    def plan_fn(_: AgentState) -> list[dict]:
+        return [{"id": "s-a", "name": "step-a"}]
+
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+        called_steps.append(step.name)
+        return StepOutcome(status="ok", output={"step": step.name, "idx": step_idx})
+
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn))
+    assert called_steps == ["step-a", "step-b"]
+    assert updated.final_answer is not None
+    assert updated.final_answer.output["success_steps"] == 2
+    assert any(e.payload.get("phase") == "plan_expand" for e in updated.events if e.event_type == "state_update")
+
+
+def test_engine_should_schedule_steps_by_dependencies_and_priority() -> None:
+    """计划中的依赖和优先级应真正影响执行顺序。"""
+
+    engine = EngineLoop(limits=EngineLimits(max_steps=4, time_budget_ms=5000))
+    state = build_initial_state("session_engine_schedule")
+    called_steps: list[str] = []
+
+    def plan_fn(_: AgentState) -> ExecutionPlan:
+        return ExecutionPlan(
+            global_task="按依赖顺序完成任务",
+            steps=[
+                PlanStep(key="s-c", name="step-c", priority=30, depends_on=["s-a"], payload={}),
+                PlanStep(key="s-a", name="step-a", priority=50, payload={}),
+                PlanStep(key="s-b", name="step-b", priority=10, payload={}),
+            ],
+        )
+
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+        called_steps.append(step.name)
+        return StepOutcome(status="ok", output={"step": step.name, "idx": step_idx})
+
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn))
+    assert updated.final_answer is not None
+    assert updated.final_answer.status == "success"
+    assert called_steps == ["step-b", "step-a", "step-c"]
+
+
+def test_engine_should_fail_when_plan_dependency_missing() -> None:
+    """计划引用不存在的依赖步骤时应在 plan 阶段失败。"""
+
+    engine = EngineLoop(limits=EngineLimits(max_steps=2, time_budget_ms=5000))
+    state = build_initial_state("session_engine_invalid_plan")
+
+    def plan_fn(_: AgentState) -> ExecutionPlan:
+        return ExecutionPlan(
+            global_task="测试非法依赖",
+            steps=[PlanStep(key="s-a", name="step-a", depends_on=["missing"], payload={})],
+        )
+
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+        return StepOutcome(status="ok", output={"step": step.name, "idx": step_idx})
+
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn))
+    assert updated.final_answer is not None
+    assert updated.final_answer.status == "failed"
+    assert any(e.error and e.error.error_code == "PLAN_INVALID" for e in updated.events if e.event_type == "error")
+
+
+def test_engine_should_record_global_task_in_plan_events() -> None:
+    """计划对象里的全局任务应进入事件，避免只剩步骤没有目标。"""
+
+    engine = EngineLoop(limits=EngineLimits(max_steps=2, time_budget_ms=5000))
+    state = build_initial_state("session_engine_global_task")
+
+    def plan_fn(_: AgentState) -> ExecutionPlan:
+        return ExecutionPlan(
+            global_task="为用户生成一份可执行的劳动仲裁行动方案",
+            reason="初始化计划",
+            steps=[
+                PlanStep(key="s-a", name="collect-facts", kind="analysis", payload={}),
+                PlanStep(key="s-b", name="draft-actions", kind="generation", payload={}),
+            ],
+        )
+
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+        return StepOutcome(status="ok", output={"step": step.name, "idx": step_idx})
+
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn))
+    assert any(
+        e.event_type == "plan" and e.payload.get("global_task") == "为用户生成一份可执行的劳动仲裁行动方案"
+        for e in updated.events
+    )
+    assert any(
+        e.event_type == "finish" and e.payload.get("global_task") == "为用户生成一份可执行的劳动仲裁行动方案"
+        for e in updated.events
+    )
+
+
+def test_engine_should_record_plan_governance_fields_in_events() -> None:
+    """计划的成功标准、约束、风险和审计信息应进入事件。"""
+
+    engine = EngineLoop(limits=EngineLimits(max_steps=2, time_budget_ms=5000))
+    state = build_initial_state("session_engine_plan_governance")
+
+    def plan_fn(_: AgentState) -> ExecutionPlan:
+        return ExecutionPlan(
+            global_task="生成带风控约束的执行方案",
+            success_criteria=["输出行动方案", "不遗漏关键证据清单"],
+            constraints=["不能调用外部付费服务", "总步骤数不超过 2"],
+            risk_level="high",
+            audit=PlanAudit(created_by="planner", change_summary="初始化计划"),
+            steps=[PlanStep(key="s-a", name="step-a", payload={})],
+        )
+
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+        return StepOutcome(status="ok", output={"step": step.name, "idx": step_idx})
+
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn))
+    plan_event = next(event for event in updated.events if event.event_type == "plan")
+    finish_event = next(event for event in updated.events if event.event_type == "finish")
+    assert plan_event.payload["success_criteria"] == ["输出行动方案", "不遗漏关键证据清单"]
+    assert plan_event.payload["constraints"] == ["不能调用外部付费服务", "总步骤数不超过 2"]
+    assert plan_event.payload["risk_level"] == "high"
+    assert plan_event.payload["plan_audit"]["created_by"] == "planner"
+    assert finish_event.payload["risk_level"] == "high"
+
+
+def test_engine_should_record_replan_audit_fields() -> None:
+    """重规划后应记录上一个修订号和触发步骤，便于回放和审计。"""
+
+    engine = EngineLoop(limits=EngineLimits(max_steps=4, time_budget_ms=5000, max_replans=1))
+    state = build_initial_state("session_engine_replan_audit")
+
+    def plan_fn(_: AgentState) -> ExecutionPlan:
+        return ExecutionPlan(
+            global_task="先执行，再按风险重规划",
+            success_criteria=["完成最终步骤"],
+            constraints=["禁止跳过审计记录"],
+            risk_level="medium",
+            audit=PlanAudit(created_by="planner", change_summary="初始化计划"),
+            steps=[
+                PlanStep(key="s-a", name="step-a", payload={}),
+                PlanStep(key="s-b", name="step-b", payload={}),
+            ],
+        )
+
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+        if step.name == "step-a":
+            return StepOutcome(
+                status="error",
+                output={"need_replan": True},
+                error=ErrorInfo(error_code="NEED_REPLAN", error_message="需要重规划", retryable=False),
+            )
+        return StepOutcome(status="ok", output={"step": step.name, "idx": step_idx})
+
+    async def reflect_fn(_: AgentState, step: PlanStep, step_idx: int, outcome: StepOutcome) -> ReflectDecision:
+        if step.name == "step-a" and outcome.status == "error":
+            return ReflectDecision(
+                action="replan",
+                reason="首步失败，需要调整计划",
+                replacement_plan=ExecutionPlan(
+                    origin="replan",
+                    risk_level="high",
+                    audit=PlanAudit(created_by="policy"),
+                    steps=[PlanStep(key="s-c", name="step-c", payload={})],
+                ),
+            )
+        return ReflectDecision(action="continue", reason="继续执行")
+
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn, reflect_fn=reflect_fn))
+    replan_event = next(
+        event for event in updated.events if event.event_type == "plan" and event.payload.get("phase") == "replan"
+    )
+    finish_event = next(event for event in updated.events if event.event_type == "finish")
+    assert replan_event.payload["plan_revision"] == 2
+    assert replan_event.payload["risk_level"] == "high"
+    assert replan_event.payload["plan_audit"]["previous_revision"] == 1
+    assert replan_event.payload["plan_audit"]["triggered_by_step_key"] == "s-a"
+    assert replan_event.payload["plan_audit"]["created_by"] == "policy"
+    assert finish_event.payload["plan_audit"]["triggered_by_step_name"] == "step-a"
+
+
+def test_engine_should_inherit_risk_and_audit_creator_when_replan_omits_them() -> None:
+    """重规划未显式声明治理字段时，不应被默认值静默覆盖。"""
+
+    engine = EngineLoop(limits=EngineLimits(max_steps=4, time_budget_ms=5000, max_replans=1))
+    state = build_initial_state("session_engine_replan_inherit")
+
+    def plan_fn(_: AgentState) -> ExecutionPlan:
+        return ExecutionPlan(
+            global_task="保持原风险级别和审计来源",
+            risk_level="critical",
+            audit=PlanAudit(created_by="human", change_summary="人工确认后的计划"),
+            steps=[
+                PlanStep(key="s-a", name="step-a", payload={}),
+                PlanStep(key="s-b", name="step-b", payload={}),
+            ],
+        )
+
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+        if step.name == "step-a":
+            return StepOutcome(
+                status="error",
+                output={"need_replan": True},
+                error=ErrorInfo(error_code="NEED_REPLAN", error_message="需要重规划", retryable=False),
+            )
+        return StepOutcome(status="ok", output={"step": step.name, "idx": step_idx})
+
+    async def reflect_fn(_: AgentState, step: PlanStep, step_idx: int, outcome: StepOutcome) -> ReflectDecision:
+        if step.name == "step-a" and outcome.status == "error":
+            return ReflectDecision(
+                action="replan",
+                reason="调整步骤但不改治理字段",
+                replacement_plan=ExecutionPlan(
+                    origin="replan",
+                    steps=[PlanStep(key="s-c", name="step-c", payload={})],
+                ),
+            )
+        return ReflectDecision(action="continue", reason="继续执行")
+
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn, reflect_fn=reflect_fn))
+    replan_event = next(
+        event for event in updated.events if event.event_type == "plan" and event.payload.get("phase") == "replan"
+    )
+    assert replan_event.payload["risk_level"] == "critical"
+    assert replan_event.payload["plan_audit"]["created_by"] == "human"
+
+
+def test_engine_should_replan_remaining_steps() -> None:
+    """reflect 应能把剩余步骤替换成新计划。"""
+
+    engine = EngineLoop(limits=EngineLimits(max_steps=5, time_budget_ms=5000, max_replans=2))
+    state = build_initial_state("session_engine_replan")
+    called_steps: list[str] = []
+
+    def plan_fn(_: AgentState) -> ExecutionPlan:
+        return ExecutionPlan(
+            global_task="先完成初始任务，再根据结果重规划",
+            steps=[
+                PlanStep(key="s-a", name="step-a", kind="analysis", payload={}),
+                PlanStep(key="s-b", name="step-b", kind="analysis", payload={}),
+            ],
+        )
+
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+        called_steps.append(step.name)
+        if step.name == "step-a":
+            return StepOutcome(status="error", output={"need_replan": True}, error=ErrorInfo(error_code="NEED_REPLAN", error_message="需要换计划", retryable=False))
+        return StepOutcome(status="ok", output={"step": step.name, "idx": step_idx})
+
+    async def reflect_fn(_: AgentState, step: PlanStep, step_idx: int, outcome: StepOutcome) -> ReflectDecision:
+        if step.name == "step-a" and outcome.status == "error":
+            return ReflectDecision(
+                action="replan",
+                reason="首步失败，替换剩余计划",
+                replacement_plan=ExecutionPlan(
+                    origin="replan",
+                    steps=[
+                        PlanStep(key="s-c", name="step-c", kind="recovery", payload={}),
+                        PlanStep(key="s-d", name="step-d", kind="generation", payload={}),
+                    ],
+                ),
+            )
+        return ReflectDecision(action="continue", reason="继续执行")
+
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn, reflect_fn=reflect_fn))
+    assert called_steps == ["step-a", "step-c", "step-d"]
+    assert updated.final_answer is not None
+    assert updated.final_answer.status == "success"
+    assert updated.final_answer.output["replan_count"] == 1
+    assert any(e.event_type == "plan" and e.payload.get("phase") == "replan" for e in updated.events)
+
+
+def test_engine_should_fail_when_replan_limit_reached() -> None:
+    """重规划超过上限时应明确失败，而不是无限改计划。"""
+
+    engine = EngineLoop(limits=EngineLimits(max_steps=4, time_budget_ms=5000, max_replans=0))
+    state = build_initial_state("session_engine_replan_limit")
+
+    def plan_fn(_: AgentState) -> ExecutionPlan:
+        return ExecutionPlan(
+            global_task="测试重规划上限",
+            steps=[PlanStep(key="s-a", name="step-a", kind="analysis", payload={})],
+        )
+
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+        return StepOutcome(status="error", output={}, error=ErrorInfo(error_code="FAIL", error_message="fail", retryable=False))
+
+    async def reflect_fn(_: AgentState, step: PlanStep, step_idx: int, outcome: StepOutcome) -> ReflectDecision:
+        return ReflectDecision(
+            action="replan",
+            reason="尝试重规划",
+            replacement_plan=ExecutionPlan(
+                origin="replan",
+                steps=[PlanStep(key="s-b", name="step-b", kind="recovery", payload={})],
+            ),
+        )
+
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn, reflect_fn=reflect_fn))
+    assert updated.final_answer is not None
+    assert updated.final_answer.status == "failed"
+    assert any(e.error and e.error.error_code == "REPLAN_LIMIT_REACHED" for e in updated.events if e.event_type == "error")
+
+
+def test_engine_should_allow_attempt_stage_injection() -> None:
+    """单步 attempt 阶段应允许插入额外观测逻辑。"""
+
+    def attempt_stage_customizer(stages: list[EngineStage]) -> list[EngineStage]:
+        observe_index = next(index for index, stage in enumerate(stages) if stage.name == "observe")
+
+        async def mark_attempt(context: EnginePipelineContext) -> None:
+            context.append_event(
+                event_type="state_update",
+                step_id=context.current_step_id,
+                payload={
+                    "phase": "attempt_marker",
+                    "step_key": context.current_step.key if context.current_step is not None else "",
+                    "attempt": context.current_attempt,
+                },
+            )
+
+        return stages[: observe_index + 1] + [EngineStage(name="attempt_marker", handler=mark_attempt)] + stages[observe_index + 1 :]
+
+    engine = EngineLoop(
+        limits=EngineLimits(max_steps=2, time_budget_ms=5000),
+        attempt_stage_customizer=attempt_stage_customizer,
+    )
+    state = build_initial_state("session_engine_attempt_extension")
+
+    def plan_fn(_: AgentState) -> list[dict]:
+        return [{"id": "s-a", "name": "step-a"}]
+
+    async def act_fn(_: AgentState, step: PlanStep, step_idx: int) -> StepOutcome:
+        return StepOutcome(status="ok", output={"step": step.name, "idx": step_idx})
+
+    updated = asyncio.run(engine.arun(state, plan_fn=plan_fn, act_fn=act_fn))
+    assert updated.final_answer is not None
+    assert updated.final_answer.status == "success"
+    assert any(e.payload.get("phase") == "attempt_marker" for e in updated.events if e.event_type == "state_update")
 ```
 
-#### 代码讲解（测试为什么这样设计）
+### 代码讲解
 
-1. `test_engine_run_success_flow`：验证主链路闭环，确保 `finish` 与统计字段完整落盘。  
-2. `test_engine_reflect_retry_once_then_success`：验证 reflect 真正控制重试行为，而不是“写了字段但不生效”。  
-3. `test_engine_resume_uses_stable_step_key_not_idx`：防止计划重排导致重复执行，这个测试直接覆盖生产事故高发点。  
-4. `test_engine_max_steps_counts_executed_not_skipped`：锁定预算语义，防止恢复场景被 `max_steps` 误杀。  
-5. `test_engine_step_timeout_via_executor`：把超时统一映射为错误码，后续 Observability/Evaluator 才能自动统计。  
-6. `test_engine_context_fields_recorded_in_events`：保证版本与隔离信息可追踪，便于问题归因和审计。  
-7. `test_engine_backpressure_error_when_inflight_exceeded`：验证并发上限是“可执行约束”，不是“文档承诺”。
+这一组测试锁的不是“代码有没有跑起来”，而是 Engine 的行为不变量。
 
-#### 这组测试的取舍说明
+1. 成功主链路：正常执行要得到 `success`，并且必须落 `finish` 事件。
+2. 恢复与预算护栏：恢复按稳定步骤键跳过，`max_steps` 只统计真实执行步骤，超时和背压都转成标准错误。
+3. 扩展与计划调度：扩展阶段可以安全追加步骤，`depends_on / priority` 真正影响调度顺序，缺失依赖会在 `plan` 阶段失败。
+4. 计划治理与重规划：`global_task`、`success_criteria`、`constraints`、`risk_level`、`audit` 都会进入事件，`replan` 会写修订号和触发步骤，replacement plan 省略治理字段时原值不会被默认值偷偷覆盖。
 
-1. 当前是单元级 + 轻集成级测试，优先确保语义正确。  
-2. 还没引入压测与混沌测试，这留到 Observability 组件阶段统一补齐。  
-3. 测试刻意覆盖“失败路径”，因为生产事故大都发生在失败链路而不是 happy path。  
+这最后一条很重要。因为它说明当前测试已经开始保护“计划治理语义”，而不只是保护“步骤有没有跑完”。
+
+### 逐条读懂这些测试到底在保护什么
+
+这一节很重要。不要把 `test_engine.py` 看成“很多断言”，要把它看成 Engine 的行为护栏。
+
+#### 1. 成功流测试在保护什么
+
+`test_engine_run_success_flow()` 保护的是：
+
+1. 主链路能跑通
+2. `finish` 事件一定存在
+3. `FinalAnswer` 的统计值和真实执行一致
+
+它不是简单验证“函数能返回”，而是在验证 Engine 至少具备一个稳定成功闭环。
+
+#### 2. 重试测试在保护什么
+
+`test_engine_reflect_retry_once_then_success()` 保护的是：
+
+1. 可重试错误不会立刻把整轮任务打死
+2. retry 发生时，attempt 计数和反思重试计数都要正确增加
+
+如果这条测试挂了，说明 Engine 不是“有反思能力”，而只是“写了个 retry 分支”。
+
+#### 3. 恢复测试在保护什么
+
+`test_engine_resume_uses_stable_step_key_not_idx()` 保护的是：
+
+1. 恢复靠的是稳定步骤键
+2. 不是靠“第几个步骤”这种脆弱索引
+
+这条测试的价值非常大，因为真实系统里计划顺序会变，索引语义非常不可靠。
+
+#### 4. 计划调度测试在保护什么
+
+`test_engine_should_schedule_steps_by_dependencies_and_priority()` 保护的是：
+
+1. `depends_on` 真生效
+2. `priority` 真生效
+3. 调度不是只把字段记进事件里做样子
+
+这条测试存在，才说明计划对象不是“看起来高级”，而是真的进入执行语义。
+
+#### 5. 计划治理测试在保护什么
+
+`test_engine_should_record_plan_governance_fields_in_events()` 和  
+`test_engine_should_record_replan_audit_fields()` 保护的是：
+
+1. 计划治理字段能进入事件
+2. 重规划会形成审计链
+3. 回放时不会只剩步骤名，看不到计划上下文
+
+如果没有这类测试，`success_criteria`、`risk_level`、`audit` 很容易在后续重构里被无声删掉。
+
+#### 6. 默认值覆盖测试在保护什么
+
+`test_engine_should_inherit_risk_and_audit_creator_when_replan_omits_them()` 保护的是：
+
+1. replacement plan 省略字段时，原值要被继承
+2. 默认值不能偷偷覆盖治理字段
+
+这条测试很像“细节测试”，但实际上它保护的是计划治理语义的稳定性。  
+这类 bug 最危险，因为它通常不会让系统直接报错，只会慢慢把审计数据搞脏。
+
+### 为什么这组测试已经接近生产护栏，而不只是教学测试
+
+因为它们覆盖的不只是功能点，而是系统不变量：
+
+1. 计划必须合法
+2. 计划字段必须生效
+3. 提交点必须明确
+4. 重规划必须可追踪
+5. 治理字段必须稳定继承
+
+这也是为什么我说：  
+第三章真正的完成标准，不是 loop.py 写完，而是 `test_engine.py` 足够像一组生产护栏。
 
 ---
 
 ## 运行命令
 
-先跑最小验证（建议第一遍只跑这个）：
+建议按这个顺序验证：
 
-```bash
-uv run pytest tests/unit/test_engine.py -q
+```codex
+uv run --no-sync pytest tests/unit/test_protocol.py -q
+uv run --no-sync pytest tests/unit/test_engine.py -q
+uv run --no-sync pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q
 ```
 
-再跑完整回归：
-
-```bash
-uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q
-```
+如果你只想验证第三章本身，跑第二条就够了。
 
 ---
 
-PowerShell 等价命令：
-
-```powershell
-uv run pytest tests/unit/test_engine.py -q
-uv run pytest tests/unit/test_protocol.py tests/unit/test_engine.py -q
-```
-
-预期结果：
-
-1. 最小验证应显示 `test_engine.py` 全通过（无失败用例）。
-2. 完整回归应同时覆盖 Protocol 与 Engine，确保跨组件契约不回退。
-
 ## 增量闭环验证
 
-1. 执行闭环可运行：`plan -> act -> observe -> reflect -> update -> finish` 在测试中有覆盖。
-2. 故障路径可控：超时、重试、背压都能产出标准错误事件。
-3. 恢复语义稳定：stable step key 与 executed_steps 预算语义保持一致。
+这一章的闭环，不是“代码文件都写出来了”，而是这 4 件事都成立：
+
+1. `plan -> act -> observe -> reflect -> update -> finish` 真正跑起来了。
+2. 非法计划会在 `plan` 阶段失败，而不是拖到执行阶段。
+3. `replan` 会形成正式计划修订，而不是简单换剩余列表。
+4. `finish` 事件和 `FinalAnswer` 能输出完整执行统计。
+
+---
 
 ## 验证清单
 
-1. Protocol 与 Engine 测试全部通过。
-2. Engine 事件中包含 `plan/observe/reflect/update/finish`。
-3. 失败场景可观测到标准错误码。
-4. 教程中的代码块与仓库文件逐字一致。
+完成本章后，你至少要能确认以下事项：
+
+1. `EngineLoop.arun()` 可以驱动完整主链路。
+2. `ExecutionPlan` 不再只是步骤列表，而是正式计划对象。
+3. `PlanStep.depends_on / priority` 会真正影响调度顺序。
+4. `reflect` 不止能 `retry`，还能 `replan`。
+5. `PlanAudit` 会进入 `plan`、`replan`、`finish` 事件。
+6. replacement plan 省略治理字段时，不会把原值悄悄覆盖掉。
 
 ---
 
 ## 常见问题
 
-### 1. `asyncio` 是否一定比线程快？
-不是绝对。I/O 密集 Agent 链路通常更适合协程；CPU 密集任务应下沉到进程池或专用服务。
+### 1. 为什么 Engine 现在还不直接调用 Model Runtime 或 Tool Runtime？
 
-### 2. 为什么还保留线程池？
-为了兼容同步 `act_fn`。很多历史工具 SDK 仍是同步接口，线程池是过渡层。
+因为 Engine 负责执行协调，不负责具体能力实现。直接耦合进去，会把 Engine 做成上帝类。
 
-### 3. `uv run pytest` 报 `program not found`？
-先执行 `uv add --dev pytest` 和 `uv sync --dev`。
+### 2. 为什么 `plan` 一定要做成 `ExecutionPlan`，不能继续用 `list[str]`？
+
+因为后面会有计划修订、风险治理、评测和审计。只有步骤列表，不够表达这些信息。
+
+### 3. 为什么 `replan` 要升级 `revision`？
+
+因为从系统视角看，这已经不是同一版计划。你不记录修订号，后面回放时根本分不清执行的是哪一版计划。
+
+### 4. 为什么 `depends_on` 和 `priority` 必须真的生效？
+
+因为对外暴露的契约如果不生效，就是假能力。生产系统里最怕的不是没功能，而是“看起来有，实际上没用”。
+
+### 5. 为什么还要单独做 `PlanAudit`？
+
+因为计划修订如果没有审计线索，后面你只能看到“计划变了”，但看不到“谁改的、为什么改、是哪一步触发的”。
+
+---
 
 ## 本章 DoD
 
-1. Engine 主循环已真实接入主线代码并可独立回归。
-2. 关键失败模式（重试/超时/背压/恢复）均有自动化测试覆盖。
-3. 不引入循环依赖，且不破坏 Protocol 既有契约。
+本章完成的标准不是“能跑一次”，而是：
+
+1. Engine 主链路完整可运行。
+2. 计划对象、步骤对象、重规划对象都已经标准化。
+3. 关键预算、重试、重规划、恢复、背压、计划治理行为都有测试覆盖。
+4. 第三章教程里的代码与主线源码一致，没有代码漂移。
+5. 后续组件可以把 Engine 当成稳定执行骨架继续往上接。
+
+---
 
 ## 下一章预告
 
-下一章进入 Model Runtime：把 Engine 的 `act` 从“可执行接口”升级为“真实模型调用能力”，并统一适配 OpenAI / DeepSeek 与结构化输出防崩策略。
+有了 Engine，下一章就可以落真正的运行时适配层了。
+
+下一章我们会进入 `Model Runtime`，解决两件事：
+
+1. 如何把 Engine 的 `act` 真正接到模型调用上
+2. 如何把 provider 差异封装成稳定运行时，而不是把 SDK 细节漏回 Engine

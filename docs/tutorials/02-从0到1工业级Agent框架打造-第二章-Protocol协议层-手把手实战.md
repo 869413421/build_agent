@@ -1,6 +1,6 @@
 ﻿# 《从0到1工业级Agent框架打造》第二章：先把“共同语言”焊死，系统才不会边跑边散架
 
-## 本章目标
+## 目标
 
 1. 搭建 Protocol 组件的完整对象模型：`AgentMessage`、`ToolCall`、`ToolResult`、`ExecutionEvent`、`FinalAnswer`、`AgentState`。
 2. 建立“协议先行”的工程纪律：新能力先对齐协议，再写实现。
@@ -29,6 +29,21 @@ flowchart TD
 2. 谁依赖它：后续 Engine、Model Runtime、Tool Runtime 都以它为统一输入输出契约。
 3. 依赖方向是否变化：变化为“先协议后实现”，降低跨组件耦合。
 4. 循环风险：本章保持单向依赖，不引入循环依赖。
+
+## 名词速览
+
+第一次读 Protocol，最容易混的不是代码，而是这些词到底各自站在链路的哪一层：
+
+1. `Protocol`：全链路共享的数据契约，不是“文档说明”，而是会被代码和测试直接执行的边界。
+2. `Schema`：协议里的具体对象定义，比如 `ToolCall`、`ToolResult`、`AgentState`。
+3. `Contract`：工程语义上的“约定”，强调上下游都必须遵守，不是“尽量如此”。
+4. `Validation`：进入主链路前的结构校验，核心作用是把脏数据挡在边界外。
+5. `AgentState`：运行时单一事实源，后续 Engine 的 plan/act/observe/reflect 都围绕它读写。
+6. `ExecutionEvent`：给可观测、回放、评测消费的事件记录，不是业务结果本身。
+7. `FinalAnswer`：面向最终输出的稳定结构，服务前端展示、评测和审计。
+8. `protocol_version`：协议版本号，解决的不是“好不好看”，而是“未来改字段时能不能定位兼容性问题”。
+
+> Protocol 不是“把字段写全”，而是“把系统以后会互相甩锅的地方，提前焊死成统一边界”。
 
 ## 前置条件
 
@@ -128,6 +143,21 @@ flowchart LR
   D --> E[Engine]
 ```
 
+再看得更工程一点，Protocol 实际上在做三层约束：
+
+```mermaid
+flowchart TD
+  A[上游产生结构] --> B[Schema 校验]
+  B --> C[进入主链路]
+  C --> D[写入 State 或 Event]
+  D --> E[被下游组件消费]
+```
+
+1. 上游可以来自模型、工具、用户输入或内部运行时。
+2. 只要要进入主链路，就先过 Schema 校验。
+3. 通过校验后，数据才有资格进入 `AgentState` 或 `ExecutionEvent`。
+4. 下游组件消费的是“被收口后的结构”，而不是原始野数据。
+
 ### 实战读法
 
 1. 看字段时重点看“谁生产、谁消费、谁校验”。
@@ -222,7 +252,32 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\protocol\\domain\\
 文件：[src/agent_forge/components/protocol/domain/__init__.py](../../src/agent_forge/components/protocol/domain/__init__.py)
 
 ```python
-"""Domain models for protocol component."""
+﻿"""Protocol domain exports."""
+
+from .schemas import (
+    PROTOCOL_VERSION,
+    AgentMessage,
+    AgentState,
+    ErrorInfo,
+    ExecutionEvent,
+    FinalAnswer,
+    ToolCall,
+    ToolResult,
+    build_initial_state,
+)
+
+__all__ = [
+    "PROTOCOL_VERSION",
+    "AgentMessage",
+    "AgentState",
+    "ErrorInfo",
+    "ExecutionEvent",
+    "FinalAnswer",
+    "ToolCall",
+    "ToolResult",
+    "build_initial_state",
+]
+
 ```
 
 代码讲解：
@@ -231,6 +286,15 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\protocol\\domain\\
 2. 工程取舍：使用 `__all__` 明确“稳定可用字段”，为后续演进预留空间。
 3. 边界条件：新增协议对象时必须同步更新 `__init__.py` 和 `__all__`。
 4. 失败模式：入口没导出会导致上层模块导入失败，或出现隐式依赖内部路径。
+
+### 名词对位讲解
+
+这里有两个很容易被看轻的词：
+
+1. `export`：对外导出，不只是“写出来给别人 import”，而是在声明“这是稳定入口”。
+2. `public surface`：公共暴露面，意味着后续章节默认应该依赖这里，而不是直接 import 内部文件。
+
+所以 `domain/__init__.py` 的价值不是“少打一层路径”，而是把 Protocol 的公共边界固定下来。
 
 ### 第 3 步：写 Protocol 核心 Schema
 
@@ -246,12 +310,12 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\protocol\\domain\\
 文件：[src/agent_forge/components/protocol/domain/schemas.py](../../src/agent_forge/components/protocol/domain/schemas.py)
 
 ```python
-"""协议组件（框架契约层）。
+﻿"""Protocol 组件（框架契约层）。
 
-为什么需要这一层：
-1. 在 Engine、Model Runtime、Tool Runtime 之间共享统一的数据契约。
-2. 为 Observability / Evaluator 提供稳定的结构化输入。
-3. 通过协议版本控制 Schema 的演进。
+为什么单独做这一层：
+1. 让 Engine、Model Runtime、Tool Runtime 共享同一套数据契约。
+2. 给 Observability/Evaluator 提供稳定的结构化输入。
+3. 通过版本字段控制协议演进，避免“改一个字段全链路崩”。
 """
 
 from __future__ import annotations
@@ -266,13 +330,21 @@ PROTOCOL_VERSION = "v1"
 
 
 def _now_iso() -> str:
-    """返回当前 UTC 时间戳（ISO 格式）。"""
+    """统一事件时间格式。
+
+    使用 UTC ISO 字符串，便于日志系统、数据仓库和跨时区排查统一处理。
+    """
 
     return datetime.now(timezone.utc).isoformat()
 
 
 class ErrorInfo(BaseModel):
-    """统一的运行时错误契约。"""
+    """统一错误结构。
+
+    约束：
+    - 所有运行时错误最终都应映射到这里。
+    - `retryable` 由 Runtime 层给出，用于指导 Engine 的重试决策。
+    """
 
     error_code: str = Field(..., min_length=1, description="错误码")
     error_message: str = Field(..., min_length=1, description="错误信息")
@@ -281,7 +353,12 @@ class ErrorInfo(BaseModel):
 
 
 class AgentMessage(BaseModel):
-    """Agent 对话中的单条消息对象。"""
+    """智能体消息对象。
+
+    说明：
+    - `role` 用 Literal 固定取值，防止上游传入未知角色破坏上下文拼装。
+    - `message_id` 自动生成，确保每条消息都可在 trace 中被唯一定位。
+    """
 
     message_id: str = Field(default_factory=lambda: f"msg_{uuid4().hex}", description="消息 ID")
     role: Literal["system", "developer", "user", "assistant", "tool"] = Field(..., description="消息角色")
@@ -294,88 +371,115 @@ class AgentMessage(BaseModel):
 class ToolCall(BaseModel):
     """工具调用请求。
 
-    `tool_call_id` 是幂等键（idempotency key）。
+    说明：
+    - `tool_call_id` 是幂等键；重试时可据此避免重复副作用执行。
+    - `principal` 预留给权限系统，后续可接入 capability 校验。
     """
 
-    tool_call_id: str = Field(..., min_length=1, description="唯一工具调用 ID")
+    tool_call_id: str = Field(..., min_length=1, description="工具调用唯一 ID")
     tool_name: str = Field(..., min_length=1, description="工具名称")
     args: dict[str, Any] = Field(default_factory=dict, description="工具参数")
-    principal: str = Field(..., min_length=1, description="调用方主体（用于鉴权校验）")
+    principal: str = Field(..., min_length=1, description="调用主体，用于权限控制")
     protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
 
     @field_validator("tool_call_id", "tool_name", "principal")
     @classmethod
     def _not_blank(cls, value: str) -> str:
-        # 禁止仅包含空白字符的值进入执行链路。
+        # 防止“看起来有值、实际上是空白”的脏数据流入执行链路。
         if not value.strip():
-            raise ValueError("字段不能为空白")
+            raise ValueError("字段不能为空白字符")
         return value
 
 
 class ToolResult(BaseModel):
-    """工具执行结果。"""
+    """工具调用结果。
 
-    tool_call_id: str = Field(..., min_length=1, description="匹配的工具调用 ID")
+    说明：
+    - `status` 明确区分成功/失败，避免通过是否有异常字段来“猜状态”。
+    - `latency_ms` 是后续可观测性最小指标字段。
+    """
+
+    tool_call_id: str = Field(..., min_length=1, description="对应的调用 ID")
     status: Literal["ok", "error"] = Field(..., description="执行状态")
-    output: dict[str, Any] = Field(default_factory=dict, description="输出载荷")
-    error: ErrorInfo | None = Field(default=None, description="错误详情")
-    latency_ms: int = Field(default=0, ge=0, description="执行耗时（毫秒）")
+    output: dict[str, Any] = Field(default_factory=dict, description="输出内容")
+    error: ErrorInfo | None = Field(default=None, description="错误信息")
+    latency_ms: int = Field(default=0, ge=0, description="耗时毫秒")
     protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
 
 
 class ExecutionEvent(BaseModel):
-    """用于追踪、回放和评估的执行事件。"""
+    """执行事件（用于 trace、回放、评测）。
 
-    trace_id: str = Field(..., min_length=1, description="Trace ID")
-    run_id: str = Field(..., min_length=1, description="Run ID")
+    字段语义：
+    - `trace_id`：一次链路的全局 ID。
+    - `run_id`：同一 trace 下某次运行实例。
+    - `step_id`：运行实例中的步骤定位点。
+    """
+
+    trace_id: str = Field(..., min_length=1, description="链路 ID")
+    run_id: str = Field(..., min_length=1, description="运行 ID")
     step_id: str = Field(..., min_length=1, description="步骤 ID")
     parent_step_id: str | None = Field(default=None, description="父步骤 ID")
     event_type: Literal["plan", "tool_call", "tool_result", "state_update", "finish", "error"] = Field(
         ..., description="事件类型"
     )
-    payload: dict[str, Any] = Field(default_factory=dict, description="事件载荷")
+    payload: dict[str, Any] = Field(default_factory=dict, description="事件数据")
     error: ErrorInfo | None = Field(default=None, description="事件错误")
     created_at: str = Field(default_factory=_now_iso, description="创建时间")
     protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
 
 
 class FinalAnswer(BaseModel):
-    """结构化最终输出，与具体业务领域无关。"""
+    """结构化最终输出。
+
+    设计目的：
+    - 保持领域无关，适用于任意 Agent 任务结果。
+    - 让前端展示、评测打分、审计留痕可以直接消费固定字段。
+    """
 
     status: Literal["success", "partial", "failed"] = Field(..., description="任务完成状态")
     summary: str = Field(..., min_length=1, description="结果摘要")
-    output: dict[str, Any] = Field(default_factory=dict, description="结构化输出载荷")
-    artifacts: list[dict[str, Any]] = Field(default_factory=list, description="执行产物")
+    output: dict[str, Any] = Field(default_factory=dict, description="结构化结果内容")
+    artifacts: list[dict[str, Any]] = Field(default_factory=list, description="执行产物清单")
     references: list[str] = Field(default_factory=list, description="可选参考信息")
     protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
 
 
 class AgentState(BaseModel):
-    """Engine 运行时的单一事实来源（Single Source of Truth）。"""
+    """运行状态对象（Engine 的单一事实源）。
+
+    约束：
+    - Engine 只读写这个状态对象，不在外部散落临时状态。
+    - 未来 snapshot/restore 将基于该对象序列化实现。
+    """
 
     session_id: str = Field(..., min_length=1, description="会话 ID")
-    trace_id: str = Field(default_factory=lambda: f"trace_{uuid4().hex}", description="Trace ID")
-    run_id: str = Field(default_factory=lambda: f"run_{uuid4().hex}", description="Run ID")
+    trace_id: str = Field(default_factory=lambda: f"trace_{uuid4().hex}", description="链路 ID")
+    run_id: str = Field(default_factory=lambda: f"run_{uuid4().hex}", description="运行 ID")
     messages: list[AgentMessage] = Field(default_factory=list, description="消息列表")
     tool_calls: list[ToolCall] = Field(default_factory=list, description="工具调用记录")
-    tool_results: list[ToolResult] = Field(default_factory=list, description="工具执行结果记录")
-    events: list[ExecutionEvent] = Field(default_factory=list, description="执行事件列表")
+    tool_results: list[ToolResult] = Field(default_factory=list, description="工具结果记录")
+    events: list[ExecutionEvent] = Field(default_factory=list, description="执行事件记录")
     final_answer: FinalAnswer | None = Field(default=None, description="最终结构化输出")
     protocol_version: str = Field(default=PROTOCOL_VERSION, description="协议版本")
 
     @field_validator("session_id")
     @classmethod
     def _session_id_not_blank(cls, value: str) -> str:
-        # session_id 是分区键；空值可能导致跨会话状态污染。
+        # session_id 是状态分区键，禁止空白可避免跨会话数据污染。
         if not value.strip():
-            raise ValueError("session_id 不能为空")
+            raise ValueError("session_id 不能为空白字符")
         return value
 
 
 def build_initial_state(session_id: str) -> AgentState:
-    """构建用于引擎循环的初始状态。"""
+    """创建初始状态。
+
+    这是 Engine loop 的标准起点，后续章节统一从这里进入执行流程。
+    """
 
     return AgentState(session_id=session_id)
+
 ```
 
 代码讲解：
@@ -384,6 +488,31 @@ def build_initial_state(session_id: str) -> AgentState:
 2. 工程取舍：先保证协议稳定，再考虑字段“优雅”；字段多一点比线上崩溃强。
 3. 边界条件：本章只定义协议，不定义业务语义（保持领域无关）。
 4. 失败模式：空白字段没拦住会导致幂等键失效、会话分区失效、重试策略失效。
+
+### 主流程拆解：`schemas.py` 到底在保护什么
+
+如果把这一大段代码直接当“数据类集合”来看，很容易低估它。更准确的理解方式是：
+
+1. `AgentMessage / ToolCall / ToolResult` 负责保护运行时输入输出。
+2. `ExecutionEvent` 负责保护可观测和回放输入。
+3. `FinalAnswer` 负责保护最终交付结构。
+4. `AgentState` 负责把前面这些结构收拢成单一事实源。
+
+成功链路例子：
+
+1. 模型生成一条 `ToolCall`。
+2. Tool Runtime 返回标准化 `ToolResult`。
+3. Engine 把消息、结果、事件都塞回 `AgentState`。
+4. 最终输出 `FinalAnswer`，前端和评测都能稳定读取。
+
+失败链路例子：
+
+1. 上游传来空白 `tool_call_id`。
+2. 如果没有 `field_validator`，这条记录会进入执行链路。
+3. 后续幂等、重试、审计都找不到稳定主键。
+4. 最后不是“某个字段不好看”，而是整个运行时行为开始不可预测。
+
+换句话说，`schemas.py` 真正守住的是“系统还能不能继续讲同一种话”。
 
 ### 第 4 步：写测试（完整可运行）
 
@@ -501,6 +630,17 @@ def test_error_info_schema() -> None:
 2. 断言设计：不只断言“有值”，还断言版本字段和关键状态字段。
 3. 失败注入：用空白字符串触发校验，验证协议边界确实生效。
 4. 工程价值：后续任何组件改动只要破坏协议，这组测试会第一时间报警。
+
+### 测试为什么重要
+
+这一章的测试不是在证明“Pydantic 会工作”，而是在锁 Protocol 的行为不变量：
+
+1. `build_initial_state()` 生成的状态必须天然可进入主链路。
+2. 协议对象必须能 JSON 往返，否则回放、持久化、审计都会失效。
+3. 关键 ID 字段不能接受空白值，否则幂等和隔离都会失效。
+4. 错误对象必须结构稳定，否则上游只能把错误当字符串处理。
+
+> 这组测试不是“单测装饰品”，而是后续所有组件默认站立的地基验收。
 
 ## 运行命令
 

@@ -227,5 +227,25 @@
 174. [x] 第 5 章本轮已补齐 `运行命令 / 增量闭环验证 / 验证清单 / 常见问题 / 本章 DoD`，并追加术语地图、角色分工图与测试护栏讲解。
 175. [x] 第 5 章本轮已通过 `code_block_guard verify`，确认未删减原有代码块；当前 residual 告警主要为旧版 checker 未适配 ` ```codex ` 创建命令格式。
 
-176. ???? 5 ? Markdown ???????????????????????????? checker ??? ````codex` ????
-177. ????? tutorial-quality-checker??? ````codex` ??????????????? 5 ??? tutorial-quality-checker PASS?code_block_guard PASS?
+180. 第 2 章已完成第二轮加厚：新增名词速览、协议数据流图、公共边界讲解、`schemas.py` 的成功/失败链路拆解，以及测试护栏解读。
+181. 第 2 章本轮加厚已通过 tutorial-quality-checker PASS 与 code_block_guard PASS（before=25, now=25），确认未删减任何原有代码块。
+182. 第 3 章已完成第一轮回收：修复 `engine/__init__.py`、`engine/application/loop.py`、`tests/unit/test_engine.py` 三处教程代码漂移，并补充名词速览、依赖方向讲解与测试护栏说明。
+183. 第 3 章本轮已通过 tutorial-quality-checker PASS；旧 `code_block_guard` 基线因主动修复漂移而预期失效，重建新基线后 verify PASS（before=24, now=24）。
+184. Engine 已开始做结构升级：在不破坏 `EngineLoop` 公开接口的前提下，把内部执行改成顶层 pipeline + 单步 attempt pipeline，并公开 `EngineStage`、`EnginePipelineContext` 作为扩展入口。
+185. 已新增 2 条 Engine 可扩展性回归测试，验证可插入顶层阶段扩展计划步骤，以及可插入单步阶段追加自定义观测逻辑。
+186. 当前 Engine 定向回归通过（10 passed + 9 passed）；全量 pytest 因环境缺少 `openai` 依赖在 collection 阶段失败，需在后续恢复完整环境后再补跑一次全量。
+187. 已继续按用户要求拆分臃肿的 `loop.py`：当前 Engine 代码分为 `domain/schemas.py`、`application/context.py`、`application/helpers.py`、`application/loop.py`，其中 `loop.py` 只保留 facade 与阶段编排逻辑。
+188. 本轮代码质检已完成并修复两处卫生问题：`now_ms` 注解从模糊 `callable` 收口为 `Callable[[], int]`，pipeline 上下文字段与事件写入参数从裸 `dict` 收口为显式键值类型。
+189. 拆分后 Engine 相关编译与定向回归均通过（py_compile 通过，pytest 共 19 passed）；第三章现有源码块已同步并通过 tutorial-quality-checker 与 code_block_guard 复检。
+190. 已继续升级 plan 为计划对象：新增 `ExecutionPlan`，并把 `global_task`、计划修订号、来源、原因和计划元数据正式纳入计划层与事件层。
+191. `PlanStep` 已扩为生产导向节点：支持 `kind / depends_on / priority / timeout_ms / max_retry_per_step / metadata`，其中步骤级超时与重试覆盖已接入当前 Engine 执行逻辑。
+192. 已新增 `global_task` 回归测试并通过；第三章现有源码块已再次同步到当前 Engine 代码，并通过 tutorial-quality-checker 与 code_block_guard 复检。
+193. 已继续实现 `replan`：`ReflectDecision` 现支持 `replan + replacement_plan + plan_update_mode`，`EngineLimits` 新增 `max_replans`，Engine 可在 reflect 阶段正式修订后续执行计划。
+194. 已新增 2 条回归测试，分别验证“reflect 触发重规划后替换剩余步骤”和“超出最大重规划次数时返回 REPLAN_LIMIT_REACHED”。
+195. 本轮代码质检发现并修复一个回归 bug：`resume_skip` 分支在 `while` 循环下遗漏 `step_index += 1`，导致恢复场景卡死；修复后 Engine 单测 13 passed、Engine 相关集成 9 passed，第三章源码块已再次同步并通过教程检查。
+- 2026-03-08?Engine ?????????`python -m py_compile src/agent_forge/components/engine/domain/schemas.py src/agent_forge/components/engine/application/context.py src/agent_forge/components/engine/application/helpers.py src/agent_forge/components/engine/application/loop.py tests/unit/test_engine.py`?`python -m pytest tests/unit/test_engine.py -q`?`python -m pytest tests/unit/test_tool_runtime_engine_integration.py tests/unit/test_observability.py -q`????????????? stage ????? `context.plan_steps`????? `current_plan` ???
+- 2026-03-08???? Engine ???????????????? `schedule_execution_plan(...)`?? `depends_on/priority` ????? `EnginePipelineContext.replace_plan_steps()/append_plan_steps()`?????????????`python -m py_compile ...engine... tests/unit/test_engine.py`?`python -m pytest tests/unit/test_engine.py -q`?15 passed??`python -m pytest tests/unit/test_tool_runtime_engine_integration.py tests/unit/test_observability.py -q`?9 passed????? `tutorial-quality-checker` PASS?
+- 2026-03-08???? Engine ??????????? `PlanAudit` ? `ExecutionPlan.success_criteria / constraints / risk_level / audit`??????????????????????/????????`python -m py_compile ...engine... tests/unit/test_engine.py`?`python -m pytest tests/unit/test_engine.py -q`?17 passed??`python -m pytest tests/unit/test_tool_runtime_engine_integration.py tests/unit/test_observability.py -q`?9 passed????? `tutorial-quality-checker` PASS?
+- 2026-03-08???? Engine replan ???? bug?replacement plan ?? `risk_level`/`audit.created_by` ???????????????? `test_engine_should_inherit_risk_and_audit_creator_when_replan_omits_them`????`python -m py_compile src/agent_forge/components/engine/application/helpers.py tests/unit/test_engine.py`?`python -m pytest tests/unit/test_engine.py -q`?18 passed??`python -m pytest tests/unit/test_tool_runtime_engine_integration.py tests/unit/test_observability.py -q`?9 passed??
+- 2026-03-08???????????? Engine ??????`tutorial-quality-checker` PASS?????????????????`code_block_guard inventory --out .tmp/ch03-code-inventory-v2.json` ? `verify` PASS?before=23, now=23??
+- 2026-03-08?????????????? `helpers.py`/`loop.py` ???????/???????????????? PASS?????? PASS?before=23, now=23??

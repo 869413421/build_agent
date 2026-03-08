@@ -1,6 +1,27 @@
-﻿"""Engine application exports."""
+"""Engine application exports."""
 
-from .loop import EngineLimits, EngineLoop, PlanStep, ReflectDecision, RunContext, StepOutcome
+from agent_forge.components.engine.domain import (
+    EngineLimits,
+    ExecutionPlan,
+    PlanAudit,
+    PlanStep,
+    ReflectDecision,
+    RunContext,
+    StepOutcome,
+)
 
-__all__ = ["EngineLimits", "EngineLoop", "StepOutcome", "ReflectDecision", "RunContext", "PlanStep"]
+from .context import EnginePipelineContext, EngineStage
+from .loop import EngineLoop
 
+__all__ = [
+    "EngineLimits",
+    "EngineLoop",
+    "EnginePipelineContext",
+    "EngineStage",
+    "ExecutionPlan",
+    "PlanAudit",
+    "StepOutcome",
+    "ReflectDecision",
+    "RunContext",
+    "PlanStep",
+]
