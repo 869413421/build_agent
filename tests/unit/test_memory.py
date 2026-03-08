@@ -116,11 +116,11 @@ def test_memory_should_extract_fact_memories_from_state() -> None:
                     "scope": "long_term",
                     "category": "fact",
                     "record_key": "company_stage",
-                    "content": "客户公司正在筹备 A 轮融资。",
-                    "summary": "公司筹备 A 轮融资",
-                    "source_excerpt": "筹备 A 轮融资",
+                    "content": "公司已经进入 A 轮融资准备阶段。",
+                    "summary": "公司处于 A 轮准备期",
+                    "source_excerpt": "融资状态来自最新工具结果",
                 }
-            ]
+            ],
         }
     )
     state = AgentState(session_id="session_a")
@@ -402,8 +402,8 @@ def test_memory_should_read_current_session_and_long_term_when_scope_is_unspecif
                     "scope": "long_term",
                     "category": "fact",
                     "record_key": "company_stage",
-                    "content": "ç¨æ·å¬å¸å·²ç»å¬å¼æé²å¹´åº¦æ¥åã",
-                    "summary": "å¬å¼æé²å¹´åº¦æ¥å",
+                    "content": "客户已经明确要求下周提交融资材料。",
+                    "summary": "下周提交融资材料",
                     "source_excerpt": "å¹´åº¦æ¥åæé²",
                 }
             ],
@@ -463,11 +463,11 @@ def test_memory_should_keep_explicit_source_type_from_extracted_item() -> None:
                     "scope": "long_term",
                     "category": "fact",
                     "record_key": "retrieval_fact",
-                    "content": "ç¨æ·å¬å¸å·²ç»å¬å¼æé²å¹´åº¦æ¥åã",
-                    "summary": "å¬å¼æé²å¹´åº¦æ¥å",
+                    "content": "年报明确写明公司今年会把重点放在现金流管理。",
+                    "summary": "年报提到现金流管理优先",
                     "source_type": "retrieval_citation",
                     "source_id": "cite_annual_report",
-                    "source_excerpt": "å¹´åº¦æ¥åæé²",
+                    "source_excerpt": "引自 2025 年公司年报",
                 }
             ]
         }

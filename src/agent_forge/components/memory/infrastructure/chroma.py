@@ -113,7 +113,10 @@ class ChromaMemoryVectorStore:
             self._collection.delete(ids=memory_ids)
             return len(memory_ids)
         if not hasattr(self._collection, "update") or not hasattr(self._collection, "get"):
-            raise RuntimeError("ChromaMemoryVectorStore.invalidate ?? collection.get+update ? collection.delete ???")
+            raise RuntimeError(
+                "ChromaMemoryVectorStore.invalidate 需要 collection.get + collection.update，"
+                "或者至少支持 collection.delete。"
+            )
         existing = self._load_existing_metadatas(memory_ids)
         payload = []
         for index, memory_id in enumerate(memory_ids):
@@ -157,13 +160,13 @@ class ChromaMemoryVectorStore:
         return chromadb.EphemeralClient().get_or_create_collection(name=collection_name)
 
     def _load_existing_metadatas(self, memory_ids: list[str]) -> list[dict[str, Any]]:
-        """è¯»åå·²æ metadataï¼é¿å invalidate æ¶è¦çå³é®è¿æ»¤å­æ®µã
+        """批量读取已有 metadata，供 invalidate 时做安全合并。
 
         Args:
-            memory_ids: å¾æ´æ°è®°å¿ IDã
+            memory_ids: 需要查询的记忆 ID 列表。
 
         Returns:
-            list[dict[str, Any]]: ? memory_ids ??? metadata ???
+            list[dict[str, Any]]: 与 memory_ids 顺序对齐的 metadata 列表。
         """
 
         if not hasattr(self._collection, "get"):

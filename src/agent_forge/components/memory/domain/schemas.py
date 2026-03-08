@@ -39,18 +39,18 @@ class MemorySource(BaseModel):
 
 
 class ExtractedMemoryItem(BaseModel):
-    """LLM ???????????"""
+    """LLM 结构化抽取后返回的单条记忆候选。"""
 
-    scope: MemoryScope = Field(..., description="????")
-    category: MemoryCategory = Field(..., description="????")
-    record_key: str = Field(..., min_length=1, description="?????")
-    content: str = Field(..., min_length=1, description="????")
-    summary: str = Field(default="", description="???")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="?????")
-    source_type: MemorySourceType | None = Field(default=None, description="??????")
-    source_id: str | None = Field(default=None, description="???? ID")
-    source_excerpt: str = Field(default="", description="????")
-    expires_at: str | None = Field(default=None, description="??????")
+    scope: MemoryScope = Field(..., description="记忆作用域")
+    category: MemoryCategory = Field(..., description="记忆分类")
+    record_key: str = Field(..., min_length=1, description="逻辑主键")
+    content: str = Field(..., min_length=1, description="完整内容")
+    summary: str = Field(default="", description="摘要")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="附加元数据")
+    source_type: MemorySourceType | None = Field(default=None, description="来源类型")
+    source_id: str | None = Field(default=None, description="来源对象 ID")
+    source_excerpt: str = Field(default="", description="来源摘录")
+    expires_at: str | None = Field(default=None, description="过期时间")
 
 
 class MemoryRecord(BaseModel):

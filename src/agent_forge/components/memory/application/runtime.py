@@ -379,10 +379,11 @@ def _validate_read_query(query: MemoryReadQuery) -> None:
 
 
 def _resolved_scopes(scope: MemoryScope | None, session_id: str | None) -> list[MemoryScope]:
-    """æ scope åæ°è§£æä¸ºå®éè®¿é®èå´ã
+    """æ scope åæ°è§£æä¸ºå®é
+è®¿é®èå´ã
 
     Args:
-        scope: ?? scope?
+        scope: 显式传入的 scope。
         session_id: å½åæ¥è¯¢æºå¸¦ç session_idã
 
     Returns:

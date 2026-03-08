@@ -153,14 +153,14 @@ class FakeCollection:
 
 
 def _matches_where(metadata: dict[str, Any], where: dict[str, Any]) -> bool:
-    """å¹éç®åç where æ¡ä»¶ï¼é¿å fake collection ä¾èµåºå®æ¡ä»¶é¡ºåºã
+    """解析 where 条件，模拟 Chroma 的 metadata 过滤行为。
 
     Args:
-        metadata: åæ¡åé metadataã
-        where: Chroma ?? where ???
+        metadata: 当前候选记录的 metadata。
+        where: Chroma 风格的 where 条件。
 
     Returns:
-        bool: å½å metadata æ¯å¦å¹éæ¡ä»¶ã
+        bool: 当前 metadata 是否满足过滤条件。
     """
 
     if "$and" in where:
