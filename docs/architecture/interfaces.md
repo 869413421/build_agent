@@ -14,6 +14,9 @@
 8. `MemoryRuntime.write(request) -> MemoryWriteResult`
 9. `MemoryRuntime.read(query) -> MemoryReadResult`
 10. `EvaluatorRuntime.evaluate(request) -> EvaluationResult`
+11. `SafetyRuntime.check_input(request) -> SafetyDecision`
+12. `SafetyRuntime.check_tool_call(request) -> SafetyDecision`
+13. `SafetyRuntime.check_output(request) -> SafetyDecision`
 
 ## 核心类型
 
@@ -53,6 +56,11 @@
 34. `EvaluationScore`
 35. `EvaluationRubric`
 36. `TrajectorySummary`
+37. `SafetyCheckRequest`
+38. `SafetyDecision`
+39. `SafetyRule`
+40. `SafetyAuditRecord`
+41. `SafetyReviewer`
 
 ## 必含字段约束
 
@@ -71,6 +79,16 @@
 13. Evaluator 评估输出必须结构化，至少暴露 `verdict / total_score / scores / summary`
 14. LLM Judge 若接入模型能力，必须统一走 `ModelRuntime`，不能在 Evaluator 内直接耦合具体模型 SDK
 15. 轨迹评估必须能消费 `ExecutionEvent` 序列，不能只看最终答案
+16. Safety 审查输出必须结构化，至少暴露 `allowed / action / stage / policy_version`
+17. Safety reviewer 必须可插拔；后续替换成 LLM 或第三方 API 时不得改变 `SafetyDecision` 契约
+
+## Safety 特别约束
+
+1. Safety 首版保持独立 runtime，不直接修改 `EngineLoop.run/arun` 公共签名
+2. Safety 首版必须同时覆盖 `input / tool / output` 三个阶段
+3. `ToolRuntime` 的安全接入应通过 hook 完成，避免把策略逻辑硬编码进工具执行器
+4. 输出安全降级后仍必须返回合法 `FinalAnswer`，不能破坏前端与评估侧的结构化消费契约
+5. 审计证据默认脱敏；reviewer 不得把明文敏感字段直接写入 audit / trace / log
 
 ## Engine 特别约束
 

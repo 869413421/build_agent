@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextvars import ContextVar
+
 from agent_forge.components.protocol import ToolCall, ToolResult
 from agent_forge.components.tool_runtime.domain.schemas import (
     NoopToolRuntimeHooks,
@@ -9,6 +11,18 @@ from agent_forge.components.tool_runtime.domain.schemas import (
     ToolRuntimeEvent,
     ToolRuntimeHooks,
 )
+
+_hook_context_var: ContextVar[dict[str, object]] = ContextVar("tool_runtime_hook_context", default={})
+
+
+def get_current_hook_context() -> dict[str, object]:
+    """读取当前工具 hook 上下文。
+
+    Returns:
+        dict[str, object]: 当前 hook 上下文字典。
+    """
+
+    return dict(_hook_context_var.get())
 
 
 class HookDispatcher:
@@ -31,21 +45,26 @@ class HookDispatcher:
         """
         self._hooks.append(hook)
 
-    def before_execute(self, tool_call: ToolCall) -> ToolCall:
+    def before_execute(self, tool_call: ToolCall, context: dict[str, object] | None = None) -> ToolCall:
         """分发 before_execute。
 
         Args:
             tool_call: 待执行的工具调用。
+            context: 当前执行上下文。
 
         Returns:
             ToolCall: 经过 hooks 处理后的调用对象。
         """
-        call = tool_call
-        if not self._hooks:
-            return self._noop.before_execute(call)
-        for hook in self._hooks:
-            call = hook.before_execute(call)
-        return call
+        token = _hook_context_var.set(dict(context or {}))
+        try:
+            call = tool_call
+            if not self._hooks:
+                return self._noop.before_execute(call)
+            for hook in self._hooks:
+                call = hook.before_execute(call)
+            return call
+        finally:
+            _hook_context_var.reset(token)
 
     def after_execute(self, result: ToolResult) -> ToolResult:
         """分发 after_execute。

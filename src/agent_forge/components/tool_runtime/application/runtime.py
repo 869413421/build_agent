@@ -107,6 +107,18 @@ class ToolRuntime:
 
         return list(self._records)
 
+    def get_tool_spec(self, tool_name: str) -> ToolSpec:
+        """返回已注册工具的规格定义。
+
+        Args:
+            tool_name: 工具名称。
+
+        Returns:
+            ToolSpec: 已注册工具规格。
+        """
+
+        return self._resolve_tool_spec(tool_name)
+
     def execute(
         self,
         tool_call: ToolCall,

@@ -75,7 +75,14 @@ class ToolExecutor:
         actor = principal or tool_call.principal
 
         # 1. before hook：允许上层在执行前重写参数（如审计字段补齐、参数裁剪）。
-        call = self.hooks.before_execute(tool_call)
+        #    如果 hook 主动拒绝（例如 Safety hook），也要走统一错误收口而不是直接抛到上层。
+        try:
+            call = self.hooks.before_execute(
+                tool_call,
+                context={"capabilities": None if capabilities is None else sorted(capabilities)},
+            )
+        except ToolRuntimeError as exc:
+            return self._handle_terminal_error(exc, tool_call, started_at, actor)
 
         # 2. 幂等命中：同一个 tool_call_id 永远返回首个结果，避免副作用重复执行。
         cached = self.idempotency_cache.get(call.tool_call_id)
@@ -128,7 +135,14 @@ class ToolExecutor:
         actor = principal or tool_call.principal
 
         # 1. before hook：异步路径与同步路径保持同一参数治理入口。
-        call = self.hooks.before_execute(tool_call)
+        #    Safety 等前置门禁若拒绝，也必须落到统一 ToolResult(error) 语义。
+        try:
+            call = self.hooks.before_execute(
+                tool_call,
+                context={"capabilities": None if capabilities is None else sorted(capabilities)},
+            )
+        except ToolRuntimeError as exc:
+            return self._handle_terminal_error(exc, tool_call, started_at, actor)
 
         # 2. 幂等命中：直接返回缓存结果，不进入任何真实调用。
         cached = self.idempotency_cache.get(call.tool_call_id)
