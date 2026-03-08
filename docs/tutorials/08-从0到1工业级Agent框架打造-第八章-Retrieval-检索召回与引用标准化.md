@@ -24,6 +24,18 @@
 
 > 第八章要做的不是“教你怎么用某个向量库”，而是先把一个不会锁死用户技术选型的通用 Retrieval 框架搭出来，再用 Chroma 证明这套抽象确实能接真实后端。
 
+## 如果你第一次接触 Retrieval，先记这 3 句话
+
+1. Retrieval 不是“接一个向量库 SDK”这么简单，而是先定义检索请求、检索结果、引用和运行时编排这些通用边界。
+2. 这一章的重点不是某个后端有多强，而是框架能不能在不锁死技术选型的前提下接真实后端。
+3. `Retriever` 负责找内容，`Reranker` 负责重排，`Citation Bridge` 负责把结果安全送给下游。
+
+第一次读这一章时，先抓住这条主线：
+
+`RetrievalQuery -> Retriever -> RetrievalRuntime -> RetrievedCitation -> Citation Bridge`
+
+先看懂“为什么 Retrieval 要独立成组件”，再去看 `InMemoryRetriever`、`ChromaRetriever` 和测试细节，会更顺。
+
 ## 2. 架构位置说明
 
 ### 当前系统结构回顾
@@ -93,7 +105,7 @@ flowchart TD
 
 > Retrieval 先独立成一个组件，负责找内容、排顺序、产标准引用；Context Engineering 再决定这些引用怎么进模型。
 
-### 名词速览：先把这一章最容易混的词看懂
+## 名词速览
 
 很多读者第一次看 Retrieval 代码时，不是卡在语法上，而是卡在“这些词到底在这一章里各自指什么”。下面先把高频名词统一一下：
 

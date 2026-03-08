@@ -49,9 +49,12 @@ def find_file_block_issues(lines: list[str]) -> list[str]:
     issues: list[str] = []
     file_line_idxs = [i for i, l in enumerate(lines) if "文件：" in l]
     for idx in file_line_idxs:
-        # Scan a small window before each 文件： marker.
+        # Support both styles:
+        # 1) 创建命令在“文件：”之前
+        # 2) 创建命令在“文件：”之后
         start = max(0, idx - 18)
-        window = "\n".join(lines[start:idx])
+        end = min(len(lines), idx + 19)
+        window = "\n".join(lines[start:end])
         has_codex = "```codex" in window
         has_bash = "```bash" in window
         has_ps = "```powershell" in window

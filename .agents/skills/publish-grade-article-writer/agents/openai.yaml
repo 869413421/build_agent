@@ -1,0 +1,7 @@
+﻿interface:
+  display_name: "出版级文章写作"
+  short_description: "从零撰写、重写并校验高质量技术教程与架构文章技能库"
+  default_prompt: "Use $publish-grade-article-writer to draft or heavily rewrite a publish-grade technical tutorial or architecture chapter."
+
+policy:
+  allow_implicit_invocation: true

@@ -32,10 +32,11 @@ class _BrokenJSONAdapter(ProviderAdapter):
 
     def generate(self, request: ModelRequest, **kwargs: object) -> ModelResponse:
         self.call_count += 1
-        
+
         # 前 N 次返回破损 JSON
         if self.call_count <= self.failure_count:
-            content = '```json\n{"status": "ok", "missing_key": true\n```'
+            fence = "`" * 3
+            content = f'{fence}json\n{{"status": "ok", "missing_key": true\n{fence}'
         else:
             # 之后返回正确格式
             content = '{"status": "ok", "required_key": "fixed_value"}'

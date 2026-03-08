@@ -7,6 +7,16 @@
 3. 落地两个真实适配器：`OpenAIAdapter` 和 `DeepSeekAdapter`。
 4. 实现 Runtime 自愈链路，并完成 DeepSeek 线上真实调用打通。
 
+## 如果你第一次接触 Model Runtime，先记这 3 句话
+
+1. Model Runtime 不是“大模型本身”，而是框架里负责“把统一请求翻译成真实模型调用”的运行时层。
+2. Adapter 不是为了多包一层，而是为了把 OpenAI、DeepSeek 这些厂商差异隔离起来。
+3. 没有这一层，Engine 迟早会被模型参数、错误处理、SDK 差异和输出格式问题拖垮。
+
+如果你现在只想先抓主线，这一章先记住：
+
+`Engine` 只负责提需求，`Model Runtime` 负责把需求安全送到模型，再把结果安全拿回来。
+
 ## 架构位置说明（演进视角）
 
 ### 当前系统结构（第 4 章开始前）
@@ -54,13 +64,41 @@ uv sync --dev
 2. 再做“最小测试”，确认代码行为没偏。
 3. 最后跑 DeepSeek 真实线上调用，完成本章闭环。
 
-## 先把术语讲成人话
+## 名词速览
 
 1. `support/config`：统一读配置，不让各模块自己到处 `os.getenv`。
 2. `support/logging`：统一日志格式，不让日志风格碎片化。
 3. `Adapter`：翻译层，把框架请求翻译成厂商 SDK 参数。
 4. `**kwargs` 透传：厂商新参数无需改框架也能传下去。
 5. `Self-healing`：输出格式错了，系统自动补提示再试一次。
+
+再补 6 个第一次最容易混的词：
+
+1. `payload`：真正发给厂商 SDK 的请求字典。它不是 `ModelRequest` 本身，而是 Adapter 翻译后的结果。
+2. `response_schema`：你希望模型输出满足的结构约束。它的作用不是“让模型更聪明”，而是“让系统知道什么叫合法输出”。
+3. `json_schema`：更强约束的结构化输出方式，适合明确字段要求。
+4. `json_object`：兼容性更好的 JSON 输出模式，约束比 `json_schema` 弱，但更容易被部分 provider 接受。
+5. `extra_kwargs`：挂在 `ModelRequest` 上的厂商扩展参数通道。
+6. `runtime.generate(..., **kwargs)`：运行时覆盖通道。它的优先级高于请求对象里的同名扩展参数。
+
+如果你只想先记一句话，这一章可以压缩成：
+
+**Model Runtime 的工作，就是把统一请求翻译成厂商 payload，再把厂商输出重新收口成统一响应。**
+
+## 第一次读第四章，建议先抓这 4 段
+
+第四章内容天然会比前两章硬，因为它第一次把“统一请求”和“真实厂商 SDK”接在了一起。第一次读时，建议按这个顺序走：
+
+1. 先看主流程图，确认 `Engine -> Model Runtime -> Adapter -> Provider` 这条链路。
+2. 再看 `ModelRequest/ModelResponse` 和错误类型，理解统一契约在保护什么。
+3. 再看 `base.py`，重点抓 `_build_payload()`、解析、自愈和错误收口。
+4. 最后再看真实适配器和测试，理解“同一套契约如何接不同 provider”。
+
+也就是说，第一次读这一章的顺序应该是：
+
+`主流程 -> 契约 -> base.py -> 适配器 -> 测试`
+
+如果你一上来就从厂商 SDK 细节往里钻，很容易把注意力放错地方。
 
 ## 先讲“面”：Model Runtime 主流程
 
@@ -250,7 +288,7 @@ New-Item -ItemType File -Force "src\\agent_forge\\support\\config\\settings.py" 
 文件：[src/agent_forge/support/config/settings.py](../../src/agent_forge/support/config/settings.py)
 
 ```python
-"""统一配置模块（辅助能力，不纳入 core 主干）。"""
+﻿"""统一配置模块（辅助能力，不纳入 core 主干）。"""
 
 from __future__ import annotations
 
@@ -271,6 +309,7 @@ class AppConfig(BaseSettings):
 
     openai_api_key: str | None = Field(default=None, description="OpenAI API Key")
     deepseek_api_key: str | None = Field(default=None, description="DeepSeek API Key")
+    tavily_api_key: str | None = Field(default=None, description="Tavily API Key")
     openai_base_url: str = Field(default="https://api.openai.com/v1", description="OpenAI Base URL")
     deepseek_base_url: str = Field(default="https://api.deepseek.com/v1", description="DeepSeek Base URL")
     openai_model: str = Field(default="gpt-4o-mini", description="OpenAI 默认模型")
@@ -699,6 +738,15 @@ from agent_forge.support.logging import get_logger
 
 logger = get_logger(__name__)
 
+_INTERNAL_REQUEST_EXTRA_KEYS = {
+    # Internal context-engineering diagnostics should never be sent to providers.
+    "context_budget_report",
+    # Context-engineering input-only helpers.
+    "citations",
+    # Canonical tools should come from ModelRequest.tools field, not extra kwargs.
+    "tools",
+}
+
 
 class ProviderAdapter(ABC):
     """模型厂商统一适配层接口。"""
@@ -884,6 +932,8 @@ class OpenAICompatibleAdapter(ProviderAdapter):
         merged_kwargs.update(request.extra_kwargs())
         merged_kwargs.update(kwargs)
         merged_kwargs.pop("request_id", None)
+        for key in _INTERNAL_REQUEST_EXTRA_KEYS:
+            merged_kwargs.pop(key, None)
 
         response_format = merged_kwargs.pop("response_format", None)
         if request.response_schema:
@@ -1021,6 +1071,16 @@ class OpenAICompatibleAdapter(ProviderAdapter):
 2. 执行调用并做异常分类（鉴权/限流/超时/BadRequest）。
 3. 把厂商响应映射回统一 `ModelResponse` 或流式 `ModelStreamEvent`。
 4. 在流式链路里保证 `start -> delta -> usage/error -> end` 的可观测闭环。
+
+第一次读 `base.py`，建议先只抓这 5 个函数点：
+
+1. `generate()`：同步主入口，负责发请求和收口异常。
+2. `generate_stream()`：流式主入口，负责把 provider stream 收口成统一事件流。
+3. `_build_payload()`：最关键的翻译器，把 `ModelRequest` 变成厂商 API 真正能吃的 payload。
+4. `_extract_tool_calls()`：把厂商返回里的工具调用信息转回框架协议对象。
+5. `_to_model_error()`：把厂商异常统一翻译成系统可执行的错误语义。
+
+只要先把这 5 个点串起来，`base.py` 就不会再像一大坨兼容逻辑，而是一条很清晰的翻译链。
 
 成功链路例子：
 DeepSeek 某模型不支持 `json_schema`，第一次返回 `response_format unavailable`，基类自动降级到 `json_object` 再调用一次；上层 runtime 无需改代码，调用仍成功。
@@ -1677,10 +1737,11 @@ class _BrokenJSONAdapter(ProviderAdapter):
 
     def generate(self, request: ModelRequest, **kwargs: object) -> ModelResponse:
         self.call_count += 1
-        
+
         # 前 N 次返回破损 JSON
         if self.call_count <= self.failure_count:
-            content = '```json\n{"status": "ok", "missing_key": true\n```'
+            fence = "`" * 3
+            content = f'{fence}json\n{{"status": "ok", "missing_key": true\n{fence}'
         else:
             # 之后返回正确格式
             content = '{"status": "ok", "required_key": "fixed_value"}'
@@ -1835,6 +1896,25 @@ def test_runtime_level_kwargs_should_override_request_kwargs() -> None:
     assert kwargs["reasoning_effort"] == "high"
 
 
+def test_adapter_should_not_forward_internal_context_extras() -> None:
+    """验证内部上下文字段不会透传到厂商 API 载荷。"""
+
+    client, completions = _build_fake_client('{"answer":"openai"}')
+    adapter = OpenAIAdapter(api_key="test-key", model="gpt-4o-mini", client=client)
+    runtime = ModelRuntime(adapter=adapter)
+    req = ModelRequest(
+        messages=[AgentMessage(role="user", content="hello")],
+        context_budget_report={"available_tokens": 100},
+        citations=[{"title": "Doc 1"}],
+    )
+
+    runtime.generate(req)
+    kwargs = completions.last_kwargs or {}
+
+    assert "context_budget_report" not in kwargs
+    assert "citations" not in kwargs
+
+
 def test_deepseek_adapter_should_use_provider_defaults() -> None:
     """验证 DeepSeekAdapter 默认模型和统计字段可用。"""
 
@@ -1957,6 +2037,14 @@ uv run pytest tests/unit/test_model_runtime.py -q
 3. `runtime.generate(..., **kwargs)` 覆盖透传。
 4. 结构化输出 + 自愈重试上限。
 
+如果你第一次看 `test_model_runtime.py`，先抓这 5 条测试：
+
+1. `test_provider_stub_switching_and_telemetry()`：证明统一接口下可以切 provider。
+2. `test_openai_adapter_should_pass_extended_params()`：证明扩展参数真的进入 provider payload。
+3. `test_runtime_level_kwargs_should_override_request_kwargs()`：证明运行时覆盖链是成立的。
+4. `test_adapter_should_not_forward_internal_context_extras()`：证明内部字段不会被错误透传到厂商 API。
+5. `test_self_healing_retry_flow_exceeds_limit()`：证明自愈不是无限重试，而是有边界的。
+
 测试主流程可以按“契约正确性 -> 兼容性 -> 失败恢复”三层看：
 
 1. 契约正确性：`ModelRequest/ModelResponse` 的字段和 hooks 行为是否稳定。
@@ -1968,6 +2056,14 @@ uv run pytest tests/unit/test_model_runtime.py -q
 
 失败链路例子：
 `test_self_healing_retry_flow_exceeds_limit` 固定构造持续失败，验证 runtime 不会无限重试，这个用例直接约束线上成本与延迟风险。
+
+测试为什么重要：
+
+1. 这里保护的不只是“模型能不能返回文本”，而是运行时边界。
+2. 契约边界：上层永远只看 `ModelRequest / ModelResponse`，不该看到厂商 SDK 细节。
+3. 扩展边界：允许扩展参数下传，但内部字段不能混进 provider payload。
+4. 错误边界：输出格式错了可以自愈，但超过上限必须停。
+5. 兼容边界：不同 provider 走不同 adapter，但行为要收口到同一套框架语义。
 
 ```mermaid
 flowchart LR
