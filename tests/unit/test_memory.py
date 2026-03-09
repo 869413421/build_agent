@@ -142,6 +142,34 @@ def test_memory_should_extract_fact_memories_from_state() -> None:
     assert result.records[0].scope == "long_term"
 
 
+def test_memory_should_ignore_failed_tool_results_when_extracting_facts() -> None:
+    runtime, fake_runtime = _build_runtime({"items": []})
+    state = AgentState(session_id="session_a")
+    state.tool_results.append(ToolResult(tool_call_id="tc_ok", status="ok", output={"finance_stage": "Series A prep"}))
+    state.tool_results.append(
+        ToolResult(
+            tool_call_id="tc_fail",
+            status="error",
+            output={"message": "bad"},
+            error=None,
+        )
+    )
+
+    runtime.write(
+        MemoryWriteRequest(
+            tenant_id="tenant_a",
+            user_id="user_a",
+            session_id="session_a",
+            trigger="fact",
+            agent_state=state,
+        )
+    )
+
+    tool_messages = [item for item in fake_runtime.requests[0].messages if item.role == "tool"]
+    assert len(tool_messages) == 1
+    assert "tc_ok" in tool_messages[0].content
+
+
 def test_memory_should_extract_preference_memories() -> None:
     runtime, _ = _build_runtime(
         {

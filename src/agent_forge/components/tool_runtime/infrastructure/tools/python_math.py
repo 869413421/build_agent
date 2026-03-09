@@ -6,7 +6,7 @@ import ast
 import math
 from typing import Any
 
-from agent_forge.components.tool_runtime.domain.schemas import ToolRuntimeError
+from agent_forge.components.tool_runtime.domain.schemas import ToolRuntimeError, ToolSpec
 
 _SAFE_FUNCTIONS: dict[str, Any] = {
     "abs": abs,
@@ -28,6 +28,22 @@ _SAFE_CONSTANTS: dict[str, float] = {"pi": math.pi, "e": math.e}
 class PythonMathTool:
     """基于 AST 白名单的数学表达式工具。"""
 
+    @property
+    def tool_spec(self) -> ToolSpec:
+        """返回适合 `AgentApp` 注册的工具规格。"""
+
+        return ToolSpec(
+            name="calculator",
+            description="安全执行数学表达式计算。",
+            args_schema={
+                "type": "object",
+                "properties": {"expression": {"type": "string"}},
+                "required": ["expression"],
+                "additionalProperties": False,
+            },
+            side_effect_level="none",
+        )
+
     def execute(self, args: dict[str, Any]) -> dict[str, Any]:
         """执行数学表达式计算。
 
@@ -40,6 +56,7 @@ class PythonMathTool:
         Raises:
             ToolRuntimeError: 参数非法或表达式执行失败时抛出。
         """
+
         expression = args.get("expression", "")
         if not isinstance(expression, str) or not expression.strip():
             raise ToolRuntimeError("TOOL_VALIDATION_ERROR", "expression 必须是非空字符串")
@@ -78,8 +95,9 @@ def _validate_ast(tree: ast.AST) -> None:
         tree: 已解析的表达式语法树。
 
     Raises:
-        ToolRuntimeError: 检测到危险节点/函数/标识符时抛出。
+        ToolRuntimeError: 检测到危险节点、函数或标识符时抛出。
     """
+
     allowed_node_types = (
         ast.Expression,
         ast.BinOp,
@@ -125,6 +143,7 @@ def _evaluate_node(node: ast.AST) -> float:
     Raises:
         ToolRuntimeError: 节点类型不支持或值越界时抛出。
     """
+
     if isinstance(node, ast.Constant):
         if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
             raise ToolRuntimeError("TOOL_VALIDATION_ERROR", "仅允许数值常量")

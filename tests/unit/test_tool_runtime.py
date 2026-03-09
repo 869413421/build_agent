@@ -301,6 +301,37 @@ def test_tool_runtime_should_support_execute_many_async() -> None:
     asyncio.run(_run())
 
 
+def test_tool_runtime_should_keep_records_stable_under_concurrent_async_execution() -> None:
+    runtime = ToolRuntime()
+
+    async def _async_double(args: dict) -> dict:
+        await asyncio.sleep(0.005)
+        return {"value": args["value"] * 2}
+
+    runtime.register_tool(
+        ToolSpec(
+            name="async_double_locked",
+            args_schema={"type": "object", "properties": {"value": {"type": "integer"}}, "required": ["value"]},
+        ),
+        _async_double,
+    )
+
+    async def _run() -> None:
+        calls = [
+            ToolCall(tool_call_id=f"tc_locked_{index}", tool_name="async_double_locked", args={"value": index}, principal="u1")
+            for index in range(20)
+        ]
+        results = await runtime.execute_many_async(calls, max_concurrency=8)
+        records = runtime.get_records()
+
+        assert len(results) == 20
+        assert all(item.status == "ok" for item in results)
+        assert len(records) == 20
+        assert {record.tool_call_id for record in records} == {call.tool_call_id for call in calls}
+
+    asyncio.run(_run())
+
+
 def test_tool_runtime_execute_many_async_should_validate_concurrency() -> None:
     runtime = ToolRuntime()
 

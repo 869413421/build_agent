@@ -16,6 +16,7 @@ from agent_forge.components.tool_runtime.domain.schemas import ToolRuntimeError,
 ToolHandler = Callable[[dict[str, Any]], dict[str, Any] | Awaitable[dict[str, Any]]]
 ResolveToolSpec = Callable[[str], ToolSpec]
 ResolveToolHandler = Callable[[str], ToolHandler]
+ResolveCachedResult = Callable[[str], ToolResult | None]
 PersistResult = Callable[[ToolSpec, ToolCall, str, ToolResult], None]
 
 
@@ -27,7 +28,7 @@ class ToolExecutor:
         *,
         default_timeout_ms: int,
         max_retries: int,
-        idempotency_cache: dict[str, ToolResult],
+        resolve_cached_result: ResolveCachedResult,
         resolve_spec: ResolveToolSpec,
         resolve_handler: ResolveToolHandler,
         persist_result: PersistResult,
@@ -46,7 +47,7 @@ class ToolExecutor:
         """
         self.default_timeout_ms = default_timeout_ms
         self.max_retries = max_retries
-        self.idempotency_cache = idempotency_cache
+        self.resolve_cached_result = resolve_cached_result
         self.resolve_spec = resolve_spec
         self.resolve_handler = resolve_handler
         self.persist_result = persist_result
@@ -85,7 +86,7 @@ class ToolExecutor:
             return self._handle_terminal_error(exc, tool_call, started_at, actor)
 
         # 2. 幂等命中：同一个 tool_call_id 永远返回首个结果，避免副作用重复执行。
-        cached = self.idempotency_cache.get(call.tool_call_id)
+        cached = self.resolve_cached_result(call.tool_call_id)
         if cached is not None:
             self.hooks.emit_event(
                 ToolRuntimeEvent(
@@ -145,7 +146,7 @@ class ToolExecutor:
             return self._handle_terminal_error(exc, tool_call, started_at, actor)
 
         # 2. 幂等命中：直接返回缓存结果，不进入任何真实调用。
-        cached = self.idempotency_cache.get(call.tool_call_id)
+        cached = self.resolve_cached_result(call.tool_call_id)
         if cached is not None:
             self.hooks.emit_event(
                 ToolRuntimeEvent(

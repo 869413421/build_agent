@@ -4,19 +4,27 @@
 
 ## 核心入口
 
-1. `Framework.run(task_input, session_id) -> FrameworkResult`
-2. `EngineLoop.run(state, plan_fn, act_fn, reflect_fn=None, context=None) -> AgentState`
-3. `EngineLoop.arun(state, plan_fn, act_fn, reflect_fn=None, context=None) -> AgentState`
-4. `ModelRuntime.generate(model_request, **kwargs) -> ModelResponse`
-5. `ToolRuntime.execute(tool_call, principal) -> ToolResult`
-6. `ContextEngineeringRuntime.build_bundle(...) -> ContextBundle`
-7. `RetrievalRuntime.search(query) -> RetrievalResult`
-8. `MemoryRuntime.write(request) -> MemoryWriteResult`
-9. `MemoryRuntime.read(query) -> MemoryReadResult`
-10. `EvaluatorRuntime.evaluate(request) -> EvaluationResult`
-11. `SafetyRuntime.check_input(request) -> SafetyDecision`
-12. `SafetyRuntime.check_tool_call(request) -> SafetyDecision`
-13. `SafetyRuntime.check_output(request) -> SafetyDecision`
+1. `Agent.arun(task_input, **options) -> AgentResult`
+2. `Agent.run(task_input, **options) -> AgentResult`
+3. `AgentApp.register_model(name, runtime) -> None`
+4. `AgentApp.register_tools(tools) -> None`
+5. `AgentApp.register_memory(name, runtime) -> None`
+6. `AgentApp.register_retrieval(name, runtime) -> None`
+7. `AgentApp.create_agent(...) -> Agent`
+8. `AgentRuntime.arun(request) -> AgentResult`
+9. `AgentRuntime.run(request) -> AgentResult`
+10. `EngineLoop.run(state, plan_fn, act_fn, reflect_fn=None, context=None) -> AgentState`
+11. `EngineLoop.arun(state, plan_fn, act_fn, reflect_fn=None, context=None) -> AgentState`
+12. `ModelRuntime.generate(model_request, **kwargs) -> ModelResponse`
+13. `ToolRuntime.execute(tool_call, principal) -> ToolResult`
+14. `ContextEngineeringRuntime.build_bundle(...) -> ContextBundle`
+15. `RetrievalRuntime.search(query) -> RetrievalResult`
+16. `MemoryRuntime.write(request) -> MemoryWriteResult`
+17. `MemoryRuntime.read(query) -> MemoryReadResult`
+18. `EvaluatorRuntime.evaluate(request) -> EvaluationResult`
+19. `SafetyRuntime.check_input(request) -> SafetyDecision`
+20. `SafetyRuntime.check_tool_call(request) -> SafetyDecision`
+21. `SafetyRuntime.check_output(request) -> SafetyDecision`
 
 ## 核心类型
 
@@ -30,37 +38,41 @@
 8. `ModelRequest`
 9. `ModelResponse`
 10. `ExecutionEvent`
-11. `FrameworkResult`
-12. `EvaluationRequest`
-13. `StateSnapshot`
-14. `ConfigVersion`
-15. `ErrorInfo`
-16. `ContextBundle`
-17. `ExecutionPlan`
-18. `PlanStep`
-19. `PlanAudit`
-20. `ReflectDecision`
-21. `Document`
-22. `Citation`
-23. `RetrievalQuery`
-24. `RetrievalResult`
-25. `Retriever`
-26. `Reranker`
-27. `EmbeddingProvider`
-28. `MemoryWriteRequest`
-29. `MemoryWriteResult`
-30. `MemoryReadQuery`
-31. `MemoryReadResult`
-32. `MemoryRecord`
-33. `EvaluationResult`
-34. `EvaluationScore`
-35. `EvaluationRubric`
-36. `TrajectorySummary`
-37. `SafetyCheckRequest`
-38. `SafetyDecision`
-39. `SafetyRule`
-40. `SafetyAuditRecord`
-41. `SafetyReviewer`
+11. `AgentConfig`
+12. `AgentRunRequest`
+13. `AgentResult`
+14. `AgentAppTool`
+15. `FrameworkResult`
+16. `EvaluationRequest`
+17. `StateSnapshot`
+18. `ConfigVersion`
+19. `ErrorInfo`
+20. `ContextBundle`
+21. `ExecutionPlan`
+22. `PlanStep`
+23. `PlanAudit`
+24. `ReflectDecision`
+25. `Document`
+26. `Citation`
+27. `RetrievalQuery`
+28. `RetrievalResult`
+29. `Retriever`
+30. `Reranker`
+31. `EmbeddingProvider`
+32. `MemoryWriteRequest`
+33. `MemoryWriteResult`
+34. `MemoryReadQuery`
+35. `MemoryReadResult`
+36. `MemoryRecord`
+37. `EvaluationResult`
+38. `EvaluationScore`
+39. `EvaluationRubric`
+40. `TrajectorySummary`
+41. `SafetyCheckRequest`
+42. `SafetyDecision`
+43. `SafetyRule`
+44. `SafetyAuditRecord`
+45. `SafetyReviewer`
 
 ## 必含字段约束
 
@@ -97,6 +109,21 @@
 3. `replan` 属于正式计划修订动作，必须体现在 `ExecutionPlan.revision` 与事件审计字段里
 4. 恢复跳过必须基于稳定步骤键，而不是步骤索引
 5. `update` 是步骤提交点；只有走到这里，这一步才算真正完成
+
+## Agent 特别约束
+
+1. 用户主推荐入口固定为 `AgentApp`，`Agent` 保留为轻量直用路径与继承扩展入口。
+2. `AgentApp` 只负责注册共享能力与创建 `Agent`，不得直接承担 `run/arun` 执行职责。
+3. `AgentApp.create_agent(...)` 必须返回 `Agent`，不得再引入新的执行门面类型。
+4. `AgentApp.register_tools(...)` 负责登记全局工具池；`create_agent(..., allowed_tools=[...])` 只负责选择当前 agent 可用的授权工具子集。
+5. `AgentRuntime` 现已接通 `allowed_tools` 与 `memory` 主链路：
+   `allowed_tools` 会经模型工具规划进入 `ToolRuntime`，
+   `memory` 会执行“前置读取注入 + 最终答案写回”闭环。
+6. `AgentApp.register_memory(...)` 首版只接受具备 `read(...) / write(...)` 的 memory runtime，不接受裸 store；若后续要支持 store，必须在应用层先包装成 runtime 再注册。
+7. `Agent` 必须保持可继承，至少保留 `_build_runtime / _build_request / _before_run / _after_run / _on_error / _get_capabilities / _get_context` 这些稳定扩展点。
+8. `AgentRuntime` 是正式编排层，负责把 Safety、Engine、Context、Model、Tool、Evaluator 等组件收口成统一运行链路。
+9. `AgentRuntime` 必须支持注入自定义 `EngineLoop`；允许用户替换默认执行机制，但不得破坏 `AgentState / ExecutionPlan / FinalAnswer` 等稳定协议。
+10. CLI、API 等应用层入口应优先建立在 `AgentApp` 或其创建出的 `Agent` 之上，不得重新实现一套独立装配逻辑。
 
 ## Evaluator 特别约束
 

@@ -184,6 +184,8 @@ class MemoryExtractor:
         if final_answer is not None:
             messages.append(AgentMessage(role="assistant", content=f"final_answer: {final_answer.output}"))
         for result in request.tool_results or (request.agent_state.tool_results if request.agent_state else []):
+            if result.status != "ok":
+                continue
             messages.append(AgentMessage(role="tool", content=f"tool_result[{result.tool_call_id}]: {result.output}"))
         if not messages:
             messages.append(AgentMessage(role="user", content="没有可抽取的事实，可返回空 items。"))

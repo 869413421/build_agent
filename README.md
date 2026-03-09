@@ -39,7 +39,7 @@
 | 09 | Memory | 已完成 | [第 09 章](docs/tutorials/09-从0到1工业级Agent框架打造-第九章-Memory-双层记忆写入与语义召回.md) |
 | 10 | Evaluator | 已完成 | [第十章：Evaluator 结果评估与轨迹评分](docs/tutorials/10-从0到1工业级Agent框架打造-第十章-Evaluator-结果评估与轨迹评分.md) |
 | 11 | Safety Layer | 已完成 | [第十一章：Safety Layer 输入、工具、输出三段防线](docs/tutorials/11-从0到1工业级Agent框架打造-第十一章-SafetyLayer-输入工具输出三段防线.md) |
-| 12 | 生产发布与治理专题（预留） | 预留 | 待发布 |
+| 12 | Agent 开箱即用入口与可扩展编排层 | 已完成 | [第十二章：Agent 开箱即用入口与可扩展编排层](docs/tutorials/12-从0到1工业级Agent框架打造-第十二章-Agent-开箱即用入口与可扩展编排层.md) |
 | 13 | 生产发布与治理专题（预留） | 预留 | 待发布 |
 | 14 | 生产发布与治理专题（预留） | 预留 | 待发布 |
 
@@ -48,22 +48,34 @@
 1. 安装依赖：
 
 ```bash
-pip install -e .[dev]
+uv sync --dev
 ```
 
-2. 启动 API：
+2. 主推荐入口运行 `AgentApp()`：
 
 ```bash
-agent-forge version
+uv run python -c "import asyncio; from agent_forge import AgentApp; app = AgentApp(); agent = app.create_agent(name='researcher', model='default'); result = asyncio.run(agent.arun('帮我梳理一下任务下一步')); print(result.summary)"
 ```
 
-3. 测试健康检查：
+3. 轻量直用路径运行 `Agent()`：
+
+```bash
+uv run python -c "import asyncio; from agent_forge import Agent; result = asyncio.run(Agent().arun('帮我梳理一下任务下一步')); print(result.summary)"
+```
+
+4. 查看 CLI 版本入口：
+
+```bash
+uv run agent-forge version
+```
+
+5. 启动 API 健康检查：
 
 ```bash
 uv run python -m uvicorn agent_forge.apps.api.app:app --reload
 ```
 
-4. 终端快速体验案情采集：
+6. 访问健康检查：
 
 ```bash
 curl http://127.0.0.1:8000/v1/health

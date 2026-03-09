@@ -1,10 +1,10 @@
-"""Tavily 搜索工具（官方 SDK）。"""
+"""Tavily 搜索工具。"""
 
 from __future__ import annotations
 
 from typing import Any
 
-from agent_forge.components.tool_runtime.domain.schemas import ToolRuntimeError
+from agent_forge.components.tool_runtime.domain.schemas import ToolRuntimeError, ToolSpec
 from agent_forge.support.config import settings
 
 
@@ -16,10 +16,32 @@ class TavilySearchTool:
 
         Args:
             api_key: 可选 API Key；为空时从 settings 读取。
-            client: 可选已构建 Tavily 客户端（用于测试注入）。
+            client: 可选已构建 Tavily 客户端；用于测试注入。
         """
+
         self._api_key = api_key or settings.tavily_api_key
         self._client = client
+
+    @property
+    def tool_spec(self) -> ToolSpec:
+        """返回适合 `AgentApp` 注册的工具规格。"""
+
+        return ToolSpec(
+            name="web_search",
+            description="通过 Tavily 执行联网搜索并返回标准化结果。",
+            args_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "max_results": {"type": "integer"},
+                    "search_depth": {"type": "string"},
+                    "topic": {"type": "string"},
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+            side_effect_level="low",
+        )
 
     def execute(self, args: dict[str, Any]) -> dict[str, Any]:
         """执行 Tavily 搜索。
@@ -33,6 +55,7 @@ class TavilySearchTool:
         Raises:
             ToolRuntimeError: 参数不合法或调用失败时抛出。
         """
+
         query = args.get("query")
         if not isinstance(query, str) or not query.strip():
             raise ToolRuntimeError("TOOL_VALIDATION_ERROR", "query 必须是非空字符串")
@@ -48,7 +71,7 @@ class TavilySearchTool:
         # 1. 构建客户端：优先使用注入 client，便于单测和离线验证。
         client = self._client or self._build_client()
         try:
-            # 2. 调用 SDK：保持最小参数集合，避免教程示例过度复杂化。
+            # 2. 调用 SDK：保持最小参数集合，避免示例 API 过度复杂化。
             raw = client.search(
                 query=query,
                 max_results=max_results,
@@ -58,7 +81,7 @@ class TavilySearchTool:
         except ToolRuntimeError:
             raise
         except Exception as exc:  # noqa: BLE001
-            # 3. 错误映射：SDK/网络异常统一映射到 TOOL_EXECUTION_ERROR。
+            # 3. 错误映射：SDK/网络异常统一收口到 ToolRuntimeError。
             raise ToolRuntimeError("TOOL_EXECUTION_ERROR", f"Tavily 调用失败: {exc}", retryable=True) from exc
 
         results = raw.get("results", []) if isinstance(raw, dict) else []
@@ -91,6 +114,7 @@ class TavilySearchTool:
         Raises:
             ToolRuntimeError: 缺少密钥或 SDK 不可用时抛出。
         """
+
         if not self._api_key:
             raise ToolRuntimeError("TOOL_EXECUTION_ERROR", "缺少 AF_TAVILY_API_KEY", retryable=False)
         try:

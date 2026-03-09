@@ -118,6 +118,7 @@
 68. [x] 已将“通俗讲解+举例+图示+仅追加不删减”加入教程黄金法则并完成第01~04章增量升级。
 69. [x] 已修复第五章缺口：补 ChainRunner 代码示例、增强第5/6步讲解、补 demo 脚本段落。
 70. [x] 已新增硬约束：教程禁止补丁式写法，新增内容必须自然融合正文主线。
+71. [x] 已接通 `AgentApp/AgentRuntime` 的工具与 memory 主链路：`allowed_tools` 不再是静默 no-op，`memory` 已支持前置读取与运行后写回；定向回归通过，最新全量 `pytest -q` 为 `171 passed`。
 71. [x] 已完成第01~04章“自然融合式”文档优化：第02/03章附录式标题改为主线化“深入理解”标题，第04章补充同风格“深入理解”章节；不删减任何原有内容与代码。
 72. [x] 已完成第01~04章“深入理解”章节位置重排：从文末后置追加改为正文前半段前置讲解（在主线改动范围/实施步骤前），保证阅读顺序自然。
 73. [x] 已完成第五章 `chain_runner.py` 讲解增强：补齐主流程拆解、成功/失败例子、流程图+时序图，以及工程取舍与边界说明。
@@ -310,3 +311,20 @@
 - [2026-03-08] README 第 11 章状态已从“进行中”改为“已完成”，并补齐教程链接。
 - [2026-03-08] `docs/governance/PROJECT_STATUS.md` 已同步更新：Evaluator 和 Safety Layer 均标记为完成，当前阶段改为 Safety Layer 完成态。
 - [2026-03-08] Safety 最新验证基线：Safety 定向回归 14 passed，全量回归 144 passed。
+- [2026-03-08] 已完成第十二章 Agent 入口层代码交付：新增 `src/agent_forge/runtime/`，公开 `Agent / AgentRuntime / AgentRunRequest / AgentResult / AgentConfig`，并在 `src/agent_forge/__init__.py` 暴露顶层导入入口。
+- [2026-03-08] `Agent` 当前为异步优先且可继承门面：支持 `_build_runtime / _build_request / _before_run / _after_run / _on_error / _get_capabilities / _get_context` 扩展点；`AgentRuntime` 支持注入自定义 `EngineLoop`。
+- [2026-03-08] 本轮修复了一个真实跨组件缺陷：`AgentRuntime._maybe_retrieve(...)` 现已使用 `RetrievalQuery.query_text`，并把 retrieval citations 转成 `CitationItem` 再交给 Context Engineering，避免默认链路在启用 retrieval 时生成失败结果。
+- [2026-03-08] 新增并通过定向测试：`uv run --no-sync pytest tests/unit/test_agent.py tests/unit/test_agent_runtime.py tests/unit/test_agent_demo.py -q` => 14 passed。
+- [2026-03-08] 已新增第十二章教程：`docs/tutorials/12-从0到1工业级Agent框架打造-第十二章-Agent-开箱即用入口与可扩展编排层.md`，并同步更新 README 与 `docs/architecture/interfaces.md` 的顶层入口描述。
+- [2026-03-09] 已完成 `AgentApp` 应用装配层代码交付：新增 `src/agent_forge/runtime/app.py`，公开 `AgentApp / AgentAppTool`，支持注册 model、tools、memory、retrieval、evaluator、safety，并按名称装配出 `Agent`。
+- [2026-03-09] `AgentApp` 现为主推荐入口，采用“全局注册 + agent 选择”工具装配模型：`register_tools([...])` 负责登记工具池，`create_agent(..., allowed_tools=[...])` 只为当前 agent 授权工具子集；未传 `allowed_tools` 时默认空工具集。
+- [2026-03-09] 已为内置 `PythonMathTool / TavilySearchTool` 增补 `tool_spec`，使其可被 `AgentApp.register_tools([...])` 直接消费；默认 `AgentApp()` 内置注册 `default` 本地模型，确保主入口开箱即用。
+- [2026-03-09] 已新增示例与回归：`examples/agent/agent_app_demo.py`、`tests/unit/test_agent_app.py`、`tests/unit/test_agent_app_demo.py`；接口文档已同步新增 `AgentApp` 契约与 `allowed_tools` 约束。
+- [2026-03-09] 已完成 `AgentApp` 代码质检修复：为避免静默 no-op，`create_agent(..., allowed_tools=...)` 与 `create_agent(..., memory=...)` 现会在主链路未接通前直接 fail fast；对应示例已收回到真实可运行边界，最新全量回归 168 passed。
+- [2026-03-09] 已完成 `AgentApp/AgentRuntime` 本轮质检修复：`AgentRuntime` 现支持 `ModelResponse.content` 的 JSON/纯文本兜底解析，不再强依赖 `parsed_output`；`AgentApp.register_memory(...)` 已收紧为“仅接受具备 `read/write` 的 runtime”，并在注册阶段 fail fast；定向回归与全量回归已更新通过。
+- [2026-03-09] 已完成 `AgentRuntime` 本轮质检修复：失败链路现在会把最终 `ErrorInfo` 提升到 `AgentResult.error`；`metadata.tool_records` 改为本次运行增量统计，避免同一 agent 多次运行后累计漂移；对应回归已补齐并通过。
+- [2026-03-09] 已完成 `AgentRuntime` 本轮质检修复：`tool_call_id` 现自动追加 `run_id` 命名空间，避免同一 agent 多次运行时跨 run 命中旧工具缓存；`memory_write_count` 现优先基于 `structured_written_count/vector_written_count` 统计；对应回归已补齐并通过。
+- [2026-03-09] 已完成 `AgentRuntime/Memory` 本轮质检修复：失败 `final_answer` 不再触发 memory 写回；`fact` 抽取现在只消费 `status=\"ok\"` 的工具结果；对应回归已补齐并通过。
+- [2026-03-09] 已完成 `AgentRuntime/ToolRuntime` 本轮并发质检修复：`metadata.tool_records` 现直接使用当前 run 的 `state.tool_results` 计数，避免共享 runtime 并发复用时串统计；`ToolRuntime` 的幂等缓存读取、缓存写入和执行记录写入已统一加锁，并新增并发回归测试；最新全量 `pytest -q` 为 `183 passed`。
+
+- [2026-03-09] 本轮已完成 runtime 公开层编码收口：src/agent_forge/runtime/ 与 src/agent_forge/components/tool_runtime/application/runtime.py 已清理中文乱码，主流程步骤注释恢复；验证基线为定向回归 48 passed、全量回归 183 passed。
