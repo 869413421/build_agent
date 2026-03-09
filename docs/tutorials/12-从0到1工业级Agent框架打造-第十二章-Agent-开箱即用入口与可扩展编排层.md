@@ -1,4 +1,4 @@
-# 《从0到1工业级Agent框架打造》第十二章：AgentApp 主入口、Agent 实例门面与 AgentRuntime 编排层
+﻿# 《从0到1工业级Agent框架打造》第十二章：AgentApp 主入口、Agent 实例门面与 AgentRuntime 编排层
 
 ---
 
@@ -59,7 +59,7 @@ flowchart TD
 ## 前置条件
 
 1. Python >= 3.11
-2. ??? `uv`
+2. 已安装 `uv`
 3. 已完成第十一章 Safety Layer
 4. 在仓库根目录执行命令
 
@@ -201,8 +201,8 @@ __all__ = [
 
 ### 代码讲解
 
-* \u8bbe\u8ba1\u52a8\u673a\uff1a\u5bf9\u5916\u7edf\u4e00\u5bfc\u51fa `AgentApp`\u3001`Agent` \u548c `AgentRuntime`。
-* \u8fb9\u754c\u4e0e\u5931\u8d25\uff1a\u5fd8\u8bb0\u5bfc\u51fa\u540e，README 和 demo \u4f1a\u76f4\u63a5\u5931\u6548。
+* 设计动机：对外统一导出 `AgentApp`、`Agent` 和 `AgentRuntime`。
+* 边界与失败：忘记导出后，README 和 demo 会直接失效。
 
 ### 第 3 步：定义 Agent 协议对象
 
@@ -281,8 +281,8 @@ def build_generated_session_id(prefix: str) -> str:
 
 ### 代码讲解
 
-* \u8bbe\u8ba1\u52a8\u673a\uff1a\u7528 `AgentRunRequest` \u548c `AgentResult` \u6536\u53e3\u7528\u6237\u8f93\u5165\u548c\u6700\u7ec8\u8f93\u51fa。
-* \u5de5\u7a0b\u53d6\u820d\uff1a\u4e0d\u76f4\u63a5\u66b4\u9732 `AgentState`，\u4f18\u5148\u7a33\u5b9a\u7528\u6237\u7ed3\u679c\u9762。
+* 设计动机：用 `AgentRunRequest` 和 `AgentResult` 收口用户输入和最终输出。
+* 工程取舍：不直接暴露 `AgentState`，优先稳定用户结果面。
 
 ### 第 4 步：构建默认装配工厂
 
@@ -452,8 +452,8 @@ def _extract_task_input(request: ModelRequest) -> str:
 
 ### 代码讲解
 
-* \u8bbe\u8ba1\u52a8\u673a\uff1a\u8ba9 `Agent()` \u548c `AgentApp()` \u90fd\u80fd\u5728\u6ca1\u6709 provider \u7684\u60c5\u51b5\u4e0b\u5148\u95ed\u73af\u8fd0\u884c。
-* \u8fb9\u754c\u4e0e\u5931\u8d25\uff1a\u9ed8\u8ba4\u88c5\u914d\u4e0d\u80fd\u7ed5\u8fc7 Safety \u548c Observability。
+* 设计动机：让 `Agent()` 和 `AgentApp()` 都能在没有 provider 的情况下先闭环运行。
+* 边界与失败：默认装配不能绕过 Safety 和 Observability。
 
 ### 第 5 步：实现 `AgentRuntime` 主编排层
 
@@ -1064,11 +1064,11 @@ def build_default_agent_runtime(*, config: AgentConfig | None = None) -> AgentRu
 
 ### 代码讲解
 
-1. \u5148\u89c4\u8303\u5316 request，\u518d\u6784\u5efa state，\u518d\u8fdb\u5165 input safety。
-2. act \u9636\u6bb5\u6309\u9700\u505a retrieval、tool call \u548c\u4e8c\u6b21\u751f\u6210。
-3. \u8f93\u51fa\u9636\u6bb5\u5148\u505a output safety，\u518d\u51b3\u5b9a evaluator \u548c memory write。
-4. \u5de5\u5177\u5931\u8d25\u65f6\u4f1a\u7acb\u5373\u6536\u53e3\u4e3a error，\u4e0d\u4f1a\u7ee7\u7eed\u4e8c\u6b21\u751f\u6210。
-5. \u5931\u8d25 run \u4e0d\u4f1a\u5199 finish memory，\u5931\u8d25 tool result \u4e0d\u8fdb fact memory。
+1. 先规范化 request，再构建 state，再进入 input safety。
+2. act 阶段按需做 retrieval、tool call 和二次生成。
+3. 输出阶段先做 output safety，再决定 evaluator 和 memory write。
+4. 工具失败时会立即收口为 error，不会继续二次生成。
+5. 失败 run 不会写 finish memory，失败 tool result 不进 fact memory。
 
 ### 第 6 步：实现 `Agent` 门面
 
@@ -1213,8 +1213,8 @@ class Agent:
 
 ### 代码讲解
 
-* \u8bbe\u8ba1\u52a8\u673a\uff1a\u7ed9\u7528\u6237\u4e00\u4e2a\u53ef\u7ee7\u627f\u3001\u53ef\u8986\u5199\u7684\u8f7b\u91cf\u95e8\u9762。
-* \u5931\u8d25\u8def\u5f84\uff1a\u5728\u5df2\u6709\u4e8b\u4ef6\u5faa\u73af\u91cc\u8bef\u7528 `run(...)` \u4f1a\u660e\u786e\u62a5\u9519。
+* 设计动机：给用户一个可继承、可覆写的轻量门面。
+* 失败路径：在已有事件循环里误用 `run(...)` 会明确报错。
 
 ### 第 7 步：实现 `AgentApp` 注册与装配层
 
@@ -1457,8 +1457,8 @@ class AgentApp:
 
 ### 代码讲解
 
-* `register_tools([...])` \u7ba1\u7406\u5168\u5c40\u5de5\u5177\u6c60，`allowed_tools=[...]` \u8868\u793a\u5f53\u524d agent \u6388\u6743\u5b50\u96c6。
-* \u672a\u6ce8\u518c\u8d44\u6e90\u5728 `create_agent(...)` \u9636\u6bb5\u76f4\u63a5\u62a5\u9519。
+* `register_tools([...])` 管理全局工具池，`allowed_tools=[...]` 表示当前 agent 授权子集。
+* 未注册资源在 `create_agent(...)` 阶段直接报错。
 
 ### 第 8 步：补上 demo
 
@@ -1550,8 +1550,8 @@ if __name__ == "__main__":
 
 ### 代码讲解
 
-* `agent_demo.py` \u6559\u6700\u77ed\u8def\u5f84。
-* `agent_app_demo.py` \u6559\u751f\u4ea7\u63a8\u8350\u8def\u5f84。
+* `agent_demo.py` 教最短路径。
+* `agent_app_demo.py` 教生产推荐路径。
 
 ### 第 9 步：补齐测试
 
@@ -2701,9 +2701,9 @@ def test_agent_app_demo_should_run_end_to_end() -> None:
 
 ### 测试讲解
 
-1. `test_agent.py` \u9501 `Agent` \u7684\u6700\u5c0f\u7528\u6cd5\u548c\u6269\u5c55\u70b9\u5951\u7ea6。
-2. `test_agent_runtime.py` \u9501\u4e3b\u7f16\u6392\u5951\u7ea6，\u5305\u62ec tool、memory、error \u548c model selection。
-3. `test_agent_app.py` \u9501\u6ce8\u518c\u4e0e\u88c5\u914d\u5951\u7ea6。
+1. `test_agent.py` 锁 `Agent` 的最小用法和扩展点契约。
+2. `test_agent_runtime.py` 锁主编排契约，包括 tool、memory、error 和 model selection。
+3. `test_agent_app.py` 锁注册与装配契约。
 
 ---
 
@@ -2731,31 +2731,31 @@ uv run --cache-dir .uv-cache --no-sync python examples/agent/agent_app_demo.py
 
 ## 增量闭环验证
 
-1. `AgentApp` \u5df2\u7ecf\u6210\u4e3a\u63a8\u8350\u4e3b\u5165\u53e3。
-2. `AgentRuntime` \u5df2\u7ecf\u771f\u5b9e\u63a5\u901a input safety、tool、memory、output safety。
-3. `Agent` \u5df2\u7ecf\u63d0\u4f9b\u7ee7\u627f\u6269\u5c55\u70b9。
-4. demo \u548c\u6d4b\u8bd5\u90fd\u5df2\u7ecf\u4ee5\u5f53\u524d\u4ee3\u7801\u4e3a\u51c6。
+1. `AgentApp` 已经成为推荐主入口。
+2. `AgentRuntime` 已经真实接通 input safety、tool、memory、output safety。
+3. `Agent` 已经提供继承扩展点。
+4. demo 和测试都已经以当前代码为准。
 
 ## 验证清单
 
-1. `from agent_forge import AgentApp, Agent` ?????
-2. `Agent()` ???????????
-3. `AgentApp()` ??????????? agent?
-4. `create_agent(model="...")` ????????????????
+1. `from agent_forge import AgentApp, Agent` 可以导入。
+2. `Agent()` 可以直接运行最小任务。
+3. `AgentApp()` 可以注册共享能力并创建 agent。
+4. `create_agent(model="...")` 选中的模型名会真实进入请求链路。
 5. ???????? `AgentResult.error`?
-6. ?? run ???? memory?
-7. ??? memory ?????? run ???
+6. 失败 run 不会污染 memory。
+7. 工具和 memory 统计都以本次 run 为准。
 
 ## 常见问题
 
 ### 1. 为什么已经有 `Agent()` 了，还需要 `AgentApp()`？
-`Agent()` \u89e3\u51b3\u201c\u600e\u4e48\u8dd1\u4e00\u4e2a agent\u201d，`AgentApp()` \u89e3\u51b3\u201c\u600e\u4e48\u7ba1\u7406\u548c\u88c5\u914d\u4e00\u7ec4 agent\u201d。
+`Agent()` 解决“怎么跑一个 agent”，`AgentApp()` 解决“怎么管理和装配一组 agent”。
 
 ### 2. `register_tools([...])` 和 `allowed_tools=[...]` 会不会重复？
-\u4e0d\u4f1a。\u524d\u8005\u662f\u5168\u5c40\u6ce8\u518c，\u540e\u8005\u662f\u5f53\u524d agent \u6388\u6743。
+不会。前者是全局注册，后者是当前 agent 授权。
 
 ### 3. 用户如果要重写 `EngineLoop` 怎么办？
-\u53ef\u4ee5\u5728 `AgentRuntime(..., engine_loop=custom_loop)` \u8fd9\u4e00\u5c42\u6ce8\u5165\u81ea\u5b9a\u4e49 loop。
+可以在 `AgentRuntime(..., engine_loop=custom_loop)` 这一层注入自定义 loop。
 
 ## 环境准备与缺包兜底步骤
 
@@ -2771,10 +2771,10 @@ uv run --cache-dir .uv-cache --no-sync pytest -q
 
 ## 本章 DoD
 
-1. \u7528\u6237\u53ef\u4ee5\u901a\u8fc7 `Agent()` \u6216 `AgentApp()` \u771f\u6b63\u4f7f\u7528\u6846\u67b6。
-2. `AgentApp -> Agent -> AgentRuntime -> EngineLoop` \u7684\u5206\u5c42\u8fb9\u754c\u5df2\u7ecf\u7a33\u5b9a。
-3. \u5bf9\u5e94\u6d4b\u8bd5\u548c demo \u90fd\u5df2\u7ecf\u4e0e\u771f\u5b9e\u4ee3\u7801\u5bf9\u9f50。
+1. 用户可以通过 `Agent()` 或 `AgentApp()` 真正使用框架。
+2. `AgentApp -> Agent -> AgentRuntime -> EngineLoop` 的分层边界已经稳定。
+3. 对应测试和 demo 都已经与真实代码对齐。
 
 ## 下一章预告
 
-\u4e0b\u4e00\u7ae0\u4f1a\u628a\u672c\u7ae0\u786e\u7acb\u7684 `AgentApp -> Agent -> AgentRuntime` \u4e3b\u5165\u53e3\u5916\u5316\u6210 CLI\u3001HTTP API \u548c\u53ef\u4ea4\u4ed8\u7684\u5e94\u7528\u5165\u53e3。
+下一章会把本章确立的 `AgentApp -> Agent -> AgentRuntime` 主入口外化成 CLI、HTTP API 和可交付的应用入口。

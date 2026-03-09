@@ -632,16 +632,7 @@ uv run agent-forge version
 # 预期输出: agent-forge-chapter-01
 ```
 
-
-PowerShell 等价命令：
-
-```powershell
-uv run pytest tests/unit/test_bootstrap.py -q
-uv pip install -e .
-uv run agent-forge version
-```
-
-## 环境准备与缺包兜底步骤（可直接复制）
+## 环境准备与缺包兜底步骤
 
 当你在公司网络、离线环境或本地权限受限时，优先按下面顺序排查：
 
@@ -651,29 +642,6 @@ python --version
 uv sync --dev
 uv run pytest tests/unit/test_bootstrap.py -q
 ```
-
-Windows PowerShell：
-
-```powershell
-uv --version
-python --version
-uv sync --dev
-uv run pytest tests/unit/test_bootstrap.py -q
-```
-
-若 `uv sync --dev` 因缓存权限或网络策略失败，可临时使用 Python 兜底验证“第一章主线是否可跑”：
-
-```bash
-python -m pytest tests/unit/test_bootstrap.py -q
-python -m agent_forge.apps.cli version
-```
-
-```powershell
-python -m pytest tests/unit/test_bootstrap.py -q
-python -m agent_forge.apps.cli version
-```
-
-这一步的设计意图是先确认“代码主线没问题”，再回头治理 `uv` 环境问题，避免把业务故障和环境故障混在一起排查。
 
 ## 增量闭环验证
 

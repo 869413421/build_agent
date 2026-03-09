@@ -70,26 +70,6 @@ uv add --dev pytest
 uv sync --dev
 ```
 
-环境准备与缺包兜底（可直接复制）：
-
-```bash
-uv run pytest tests/unit/test_protocol.py -q
-```
-
-```powershell
-uv run pytest tests/unit/test_protocol.py -q
-```
-
-若 `uv` 在当前机器因缓存权限失败，可先验证主线逻辑是否正确：
-
-```bash
-python -m pytest tests/unit/test_protocol.py -q
-```
-
-```powershell
-python -m pytest tests/unit/test_protocol.py -q
-```
-
 ## 先讲“面”：为什么第二章必须先做 Protocol
 
 第一章我们解决的是“项目能启动”。  
@@ -262,7 +242,7 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\protocol\\domain\\
 文件：[src/agent_forge/components/protocol/domain/__init__.py](../../src/agent_forge/components/protocol/domain/__init__.py)
 
 ```python
-﻿"""Protocol domain exports."""
+"""Protocol domain exports."""
 
 from .schemas import (
     PROTOCOL_VERSION,
@@ -320,7 +300,7 @@ New-Item -ItemType File -Force "src\\agent_forge\\components\\protocol\\domain\\
 文件：[src/agent_forge/components/protocol/domain/schemas.py](../../src/agent_forge/components/protocol/domain/schemas.py)
 
 ```python
-﻿"""Protocol 组件（框架契约层）。
+"""Protocol 组件（框架契约层）。
 
 为什么单独做这一层：
 1. 让 Engine、Model Runtime、Tool Runtime 共享同一套数据契约。
