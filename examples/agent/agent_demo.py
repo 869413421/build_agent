@@ -1,4 +1,4 @@
-"""Minimal demo for the user-facing Agent facade."""
+"""最小 `Agent()` 示例。"""
 
 from __future__ import annotations
 
@@ -8,14 +8,10 @@ from agent_forge import Agent
 
 
 async def run_demo() -> dict[str, object]:
-    """Run the minimal `Agent()` demo.
-
-    Returns:
-        dict[str, object]: Demo result payload.
-    """
+    """运行最小 `Agent()` 示例。"""
 
     agent = Agent()
-    result = await agent.arun("帮我总结这次仲裁材料还缺什么")
+    result = await agent.arun("帮我总结一下这次任务材料还缺什么？")
     return {
         "status": result.status,
         "summary": result.summary,

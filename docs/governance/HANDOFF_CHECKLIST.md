@@ -328,3 +328,9 @@
 - [2026-03-09] 已完成 `AgentRuntime/ToolRuntime` 本轮并发质检修复：`metadata.tool_records` 现直接使用当前 run 的 `state.tool_results` 计数，避免共享 runtime 并发复用时串统计；`ToolRuntime` 的幂等缓存读取、缓存写入和执行记录写入已统一加锁，并新增并发回归测试；最新全量 `pytest -q` 为 `183 passed`。
 
 - [2026-03-09] 本轮已完成 runtime 公开层编码收口：src/agent_forge/runtime/ 与 src/agent_forge/components/tool_runtime/application/runtime.py 已清理中文乱码，主流程步骤注释恢复；验证基线为定向回归 48 passed、全量回归 183 passed。
+
+- [2026-03-09] 本轮未新增框架能力，已完成教程与生产状态审计：第 12 章检查失败并确认与当前 AgentApp/AgentRuntime 代码漂移；已新增 TUTORIAL_ALIGNMENT_AUDIT.md 与 PRODUCTION_READINESS_CHECKLIST.md 作为后续公开发布与生产评估基线。
+
+- [2026-03-09] 已完成第一轮公开面同步：README.md 已重写为当前真实入口说明，examples/agent/agent_demo.py 与 examples/agent/agent_app_demo.py 已清理乱码并通过 demo 定向回归；下一步进入第 12 章教程重写。
+
+- [2026-03-09] 教程同步：README 已切到 AgentApp 主入口；第12章已按当前 runtime 真实代码重写；第05章 hooks_dispatcher.py、schemas.py 与第09章 __init__.py、extractor.py、test_memory.py 的教程代码块已对齐现状；05/09/11/12 教程检查通过。

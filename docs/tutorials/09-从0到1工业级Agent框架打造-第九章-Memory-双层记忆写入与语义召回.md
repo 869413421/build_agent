@@ -240,6 +240,7 @@ __all__ = [
     "InMemoryLongTermMemoryStore",
     "ChromaMemoryVectorStore",
 ]
+
 ```
 
 ```codex
@@ -879,6 +880,8 @@ class MemoryExtractor:
         if final_answer is not None:
             messages.append(AgentMessage(role="assistant", content=f"final_answer: {final_answer.output}"))
         for result in request.tool_results or (request.agent_state.tool_results if request.agent_state else []):
+            if result.status != "ok":
+                continue
             messages.append(AgentMessage(role="tool", content=f"tool_result[{result.tool_call_id}]: {result.output}"))
         if not messages:
             messages.append(AgentMessage(role="user", content="没有可抽取的事实，可返回空 items。"))
@@ -937,6 +940,7 @@ def _memory_extraction_schema(task_name: str) -> dict[str, Any]:
             }
         },
     }
+
 ```
 
 ### 代码讲解
@@ -2962,6 +2966,34 @@ def test_memory_should_extract_fact_memories_from_state() -> None:
     assert result.records[0].scope == "long_term"
 
 
+def test_memory_should_ignore_failed_tool_results_when_extracting_facts() -> None:
+    runtime, fake_runtime = _build_runtime({"items": []})
+    state = AgentState(session_id="session_a")
+    state.tool_results.append(ToolResult(tool_call_id="tc_ok", status="ok", output={"finance_stage": "Series A prep"}))
+    state.tool_results.append(
+        ToolResult(
+            tool_call_id="tc_fail",
+            status="error",
+            output={"message": "bad"},
+            error=None,
+        )
+    )
+
+    runtime.write(
+        MemoryWriteRequest(
+            tenant_id="tenant_a",
+            user_id="user_a",
+            session_id="session_a",
+            trigger="fact",
+            agent_state=state,
+        )
+    )
+
+    tool_messages = [item for item in fake_runtime.requests[0].messages if item.role == "tool"]
+    assert len(tool_messages) == 1
+    assert "tc_ok" in tool_messages[0].content
+
+
 def test_memory_should_extract_preference_memories() -> None:
     runtime, _ = _build_runtime(
         {
@@ -3305,6 +3337,7 @@ def test_memory_should_keep_explicit_source_type_from_extracted_item() -> None:
     assert len(result.records) == 1
     assert result.records[0].source.source_type == "retrieval_citation"
     assert result.records[0].source.source_id == "cite_annual_report"
+
 ```
 
 ### 代码讲解
