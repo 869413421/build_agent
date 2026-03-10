@@ -334,3 +334,4 @@
 - [2026-03-09] 已完成第一轮公开面同步：README.md 已重写为当前真实入口说明，examples/agent/agent_demo.py 与 examples/agent/agent_app_demo.py 已清理乱码并通过 demo 定向回归；下一步进入第 12 章教程重写。
 
 - [2026-03-09] 教程同步：README 已切到 AgentApp 主入口；第12章已按当前 runtime 真实代码重写；第05章 hooks_dispatcher.py、schemas.py 与第09章 __init__.py、extractor.py、test_memory.py 的教程代码块已对齐现状；05/09/11/12 教程检查通过。
+- [2026-03-09] 已完成第三章教程可读性精修：仅增量追加叙事过渡与阅读导航，未触碰 Engine 组件源码；第三章当前重点新增了“为什么还需要 Engine”的问题入口、“两条主线 + 四个阅读问题”的读法，以及 `loop.py` 前的源码阅读抓手。验证：`uv run python .agents/skills/tutorial-quality-checker/scripts/check_tutorial_markers.py --file docs/tutorials/03-从0到1工业级Agent框架打造-第三章-Engine循环-反思机制与生产约束.md` PASS。
